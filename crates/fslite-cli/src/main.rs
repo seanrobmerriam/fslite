@@ -153,7 +153,11 @@ async fn run_line(executor: &dyn Executor, ctx: &RequestContext, line: &str, jso
     match executor.execute(ctx, command).await {
         Ok(output) => print_output(&output, json),
         Err(err) => {
-            eprintln!("error: {} ({:?})", err.message(), err.code());
+            eprintln!(
+                "error: {} ({:?})",
+                fslite_command::render::sanitize_for_terminal(err.message()),
+                err.code()
+            );
             std::process::exit(1);
         }
     }
@@ -185,7 +189,11 @@ async fn run_repl(executor: &dyn Executor, ctx: &RequestContext, json: bool) {
         match fslite_command::parser::parse(trimmed) {
             Ok(command) => match executor.execute(ctx, command).await {
                 Ok(output) => print_output(&output, json),
-                Err(err) => eprintln!("error: {} ({:?})", err.message(), err.code()),
+                Err(err) => eprintln!(
+                    "error: {} ({:?})",
+                    fslite_command::render::sanitize_for_terminal(err.message()),
+                    err.code()
+                ),
             },
             Err(err) => eprintln!("parse error: {err:?}"),
         }

@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
-use fslite_command::render::{render_human, render_json, sanitize_for_terminal};
 use fslite_command::CommandOutput;
+use fslite_command::render::{render_human, render_json, sanitize_for_terminal, sanitize_name};
 use fslite_core::{
-    ByteRange, Change, ChangeKind, LinkTarget, Node, NodeId, NodeKind, Page, Revision,
-    SearchMatch, TrashEntry, TrashId, TreeEntry, VirtualPath, WorkspaceId,
+    ByteRange, Change, ChangeKind, LinkTarget, Node, NodeId, NodeKind, Page, Revision, SearchMatch,
+    TrashEntry, TrashId, TreeEntry, VirtualPath, WorkspaceId,
 };
 
 fn sample_node(name: &str) -> Node {
@@ -58,6 +58,53 @@ fn sanitize_strips_other_control_bytes_but_keeps_newline_and_tab() {
     let input = "a\x07b\nc\td";
     let clean = sanitize_for_terminal(input);
     assert_eq!(clean, "ab\nc\td");
+}
+
+/// Regression test: `sanitize_for_terminal` deliberately keeps `\n`/`\t` for
+/// genuinely free-text fields, but that is the wrong sanitizer for
+/// structured fields like a node name — a newline there is never legitimate
+/// and lets an attacker forge extra rows in table-shaped output.
+/// `sanitize_name` is the stricter sibling that also strips `\n`/`\t`.
+#[test]
+fn sanitize_name_strips_newline_and_tab_in_addition_to_other_control_bytes() {
+    let input = "a\x07b\nc\td\x1be";
+    let clean = sanitize_name(input);
+    assert_eq!(clean, "abcde");
+}
+
+/// Live-verified repro: writing a node named
+/// `a.txt\nfile          999 IMPORTANT-SYSTEM-FILE.txt` and rendering a
+/// directory listing must produce exactly one line for that entry, not a
+/// second fabricated line that looks like a real, unrelated file.
+#[test]
+fn human_rendering_of_a_node_with_an_embedded_newline_does_not_forge_an_extra_row() {
+    let hostile_name = "a.txt\nfile          999 IMPORTANT-SYSTEM-FILE.txt";
+    let output = CommandOutput::Nodes(Page::new(
+        vec![sample_node("legit.txt"), sample_node(hostile_name)],
+        None,
+    ));
+    let rendered = render_human(&output);
+    let lines: Vec<&str> = rendered.lines().collect();
+    // Exactly one line per node (two nodes in the page), not three — proves
+    // the embedded `\n` did not split the hostile node's row into a second,
+    // forged line. (The fabricated text itself is still present —
+    // `sanitize_name` strips the newline, not the ordinary characters
+    // around it — but it must stay glued to its own node's single line
+    // rather than becoming a standalone row a user could mistake for real
+    // output.)
+    assert_eq!(
+        lines.len(),
+        2,
+        "rendered output had a forged extra line: {rendered:?}"
+    );
+    let matches_naming_the_fake_file = lines
+        .iter()
+        .filter(|line| line.contains("IMPORTANT-SYSTEM-FILE"))
+        .count();
+    assert_eq!(
+        matches_naming_the_fake_file, 1,
+        "the fabricated text should appear on exactly one (merged) line: {rendered:?}"
+    );
 }
 
 #[test]

@@ -9,12 +9,12 @@ pub mod lexer;
 mod local;
 mod output;
 pub mod parser;
-pub mod render;
 mod remote;
+pub mod render;
 
 pub use command::Command;
 pub use executor::Executor;
 pub use local::LocalExecutor;
 pub use output::CommandOutput;
 pub use remote::RemoteExecutor;
-pub use render::{render_human, render_json};
+pub use render::{render_human, render_json, sanitize_for_terminal};
