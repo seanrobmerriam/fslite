@@ -80,12 +80,20 @@ fn classify(word: String) -> Token {
 
 fn read_word(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Result<String, LexError> {
     let mut word = String::new();
+    // Whether this word has already consumed *any* input, including a
+    // quoted segment that happened to yield zero characters (e.g. `''` or
+    // `""`). `!word.is_empty()` is NOT an equivalent proxy for this: an
+    // empty quoted segment leaves `word` empty even though a token has
+    // definitely started, which would let a metacharacter immediately
+    // following it (e.g. `'';rm -rf /`) fall through as literal text
+    // instead of being rejected.
+    let mut started = false;
 
     while let Some(&ch) = chars.peek() {
         if ch.is_whitespace() {
             break;
         }
-        if REJECTED_UNQUOTED_METACHARACTERS.contains(&ch) && !word.is_empty() {
+        if REJECTED_UNQUOTED_METACHARACTERS.contains(&ch) && started {
             // A metacharacter ending a word (e.g. `foo;`) is still rejected —
             // stop and let the outer loop's boundary check on the *next*
             // iteration catch it. To fail immediately rather than silently
@@ -97,14 +105,17 @@ fn read_word(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Result<Str
             '\'' => {
                 chars.next();
                 word.push_str(&read_single_quoted(chars)?);
+                started = true;
             }
             '"' => {
                 chars.next();
                 word.push_str(&read_double_quoted(chars)?);
+                started = true;
             }
             _ => {
                 word.push(ch);
                 chars.next();
+                started = true;
             }
         }
     }

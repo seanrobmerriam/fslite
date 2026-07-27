@@ -72,6 +72,38 @@ fn unquoted_shell_metacharacters_are_rejected_not_silently_literal() {
 }
 
 #[test]
+fn metacharacter_immediately_after_an_empty_single_quote_is_rejected() {
+    // An empty `''` contributes zero characters to the word, but a token
+    // has still "started" — a metacharacter right after it must not be
+    // treated as literal text just because the word string happens to be
+    // empty at that point.
+    for input in ["'';rm -rf /", "''|cat", "''&", "''<a", "''>a", "''`x"] {
+        assert!(
+            matches!(tokenize(input), Err(LexError::UnsupportedMetacharacter(_))),
+            "expected rejection for: {input}"
+        );
+    }
+}
+
+#[test]
+fn metacharacter_immediately_after_an_empty_double_quote_is_rejected() {
+    assert!(matches!(
+        tokenize("\"\";rm -rf /"),
+        Err(LexError::UnsupportedMetacharacter(_))
+    ));
+}
+
+#[test]
+fn metacharacter_after_an_empty_quote_following_whitespace_is_rejected() {
+    // Same bypass, but reached after a preceding whitespace-separated word,
+    // to make sure the fix isn't accidentally position-dependent.
+    assert!(matches!(
+        tokenize("'a' '';b"),
+        Err(LexError::UnsupportedMetacharacter(_))
+    ));
+}
+
+#[test]
 fn dollar_and_tilde_are_never_expanded_they_are_just_literal_bytes_inside_a_word() {
     // Not at a token boundary as a metacharacter trigger — embedded inside an
     // otherwise ordinary word, `$`/`~` are inert. This proves the lexer does
