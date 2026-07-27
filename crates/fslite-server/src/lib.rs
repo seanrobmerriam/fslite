@@ -4,6 +4,7 @@ mod admin;
 mod auth;
 mod dto;
 mod error;
+pub mod range;
 mod routes;
 mod state;
 mod tracing_mw;
