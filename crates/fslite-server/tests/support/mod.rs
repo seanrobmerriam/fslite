@@ -16,7 +16,10 @@ pub async fn fixture() -> (AppState, WorkspaceId) {
             .await
             .unwrap(),
     );
-    let workspace = sqlite_fs.create_workspace(Default::default()).await.unwrap();
+    let workspace = sqlite_fs
+        .create_workspace(Default::default())
+        .await
+        .unwrap();
     let health_workspace = workspace.id;
 
     let mut tokens = HashMap::new();
@@ -47,4 +50,42 @@ pub async fn fixture() -> (AppState, WorkspaceId) {
 #[allow(dead_code)]
 pub fn trusted_ctx(workspace_id: WorkspaceId) -> RequestContext {
     RequestContext::trusted(workspace_id)
+}
+
+/// Captures a node's current revision via a real `GET .../fs/{path}` HTTP
+/// call (not a guessed/hardcoded value, and not a direct `state.fs.stat`
+/// call) so stale-`expected_revision` tests assert against what the API
+/// actually reports, not an assumption about what the first revision number
+/// happens to be.
+#[allow(dead_code)]
+pub async fn current_revision(
+    app_router: axum::Router,
+    workspace_id: WorkspaceId,
+    path: &str,
+) -> u64 {
+    use axum::body::Body;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let response = app_router
+        .oneshot(
+            Request::builder()
+                .uri(format!("/v1/workspaces/{workspace_id}/fs/{path}"))
+                .header("authorization", format!("Bearer {TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        200,
+        "expected stat to succeed while capturing revision for {path}"
+    );
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let node: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    node["revision"]
+        .as_u64()
+        .expect("node JSON has a numeric `revision` field")
 }

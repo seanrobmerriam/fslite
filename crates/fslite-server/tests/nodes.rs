@@ -64,11 +64,13 @@ async fn head_reports_existence_with_no_body() {
     let (state, workspace_id) = support::fixture().await;
     let response = app(state)
         .oneshot(
-            auth(Request::builder()
-                .method(Method::HEAD)
-                .uri(format!("/v1/workspaces/{workspace_id}/fs/missing.txt")))
-                .body(Body::empty())
-                .unwrap(),
+            auth(
+                Request::builder()
+                    .method(Method::HEAD)
+                    .uri(format!("/v1/workspaces/{workspace_id}/fs/missing.txt")),
+            )
+            .body(Body::empty())
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -82,21 +84,83 @@ async fn delete_removes_a_file() {
     let path = VirtualPath::parse("/a.txt").unwrap();
     state
         .fs
-        .write(&ctx, &path, WriteSource::from_bytes(b"hi".to_vec()), Default::default())
+        .write(
+            &ctx,
+            &path,
+            WriteSource::from_bytes(b"hi".to_vec()),
+            Default::default(),
+        )
         .await
         .unwrap();
 
     let response = app(state.clone())
         .oneshot(
-            auth(Request::builder()
-                .method(Method::DELETE)
-                .uri(format!("/v1/workspaces/{workspace_id}/fs/a.txt")))
-                .body(Body::empty())
-                .unwrap(),
+            auth(
+                Request::builder()
+                    .method(Method::DELETE)
+                    .uri(format!("/v1/workspaces/{workspace_id}/fs/a.txt")),
+            )
+            .body(Body::empty())
+            .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(response.status(), 200);
 
-    assert!(!state.fs.exists(&ctx, &path, Default::default()).await.unwrap());
+    assert!(
+        !state
+            .fs
+            .exists(&ctx, &path, Default::default())
+            .await
+            .unwrap()
+    );
+}
+
+/// `expected_revision` round-tripping was, until this test, exercised on
+/// only one route (`write`) across the entire suite — the exact gap that let
+/// `append` silently drop it. This closes that gap for `remove`.
+#[tokio::test]
+async fn delete_with_stale_expected_revision_is_412() {
+    let (state, workspace_id) = support::fixture().await;
+    let ctx = RequestContext::trusted(workspace_id);
+    let path = VirtualPath::parse("/a.txt").unwrap();
+    state
+        .fs
+        .write(
+            &ctx,
+            &path,
+            WriteSource::from_bytes(b"hi".to_vec()),
+            Default::default(),
+        )
+        .await
+        .unwrap();
+
+    let app_router = app(state.clone());
+    let revision = support::current_revision(app_router.clone(), workspace_id, "a.txt").await;
+
+    let response = app_router
+        .oneshot(
+            auth(Request::builder().method(Method::DELETE).uri(format!(
+                "/v1/workspaces/{workspace_id}/fs/a.txt?expected_revision={}",
+                revision + 1
+            )))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 412);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["error"]["code"], "revision_conflict");
+
+    // The file must still exist — the stale-revision request must not have
+    // gone through.
+    assert!(
+        state
+            .fs
+            .exists(&ctx, &path, Default::default())
+            .await
+            .unwrap()
+    );
 }
