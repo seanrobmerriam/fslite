@@ -1,4 +1,4 @@
-use fslite_server::range::{resolve_range, RangeError};
+use fslite_server::range::{RangeError, resolve_range};
 
 #[test]
 fn fully_specified_range_is_inclusive_end_converted_to_exclusive() {
@@ -30,17 +30,26 @@ fn suffix_longer_than_the_file_clamps_to_the_whole_file() {
 
 #[test]
 fn start_beyond_the_file_is_unsatisfiable() {
-    assert!(matches!(resolve_range("bytes=200-300", 100), Err(RangeError::Unsatisfiable)));
+    assert!(matches!(
+        resolve_range("bytes=200-300", 100),
+        Err(RangeError::Unsatisfiable)
+    ));
 }
 
 #[test]
 fn multiple_ranges_are_rejected() {
-    assert!(matches!(resolve_range("bytes=0-9,20-29", 100), Err(RangeError::MultiRangeUnsupported)));
+    assert!(matches!(
+        resolve_range("bytes=0-9,20-29", 100),
+        Err(RangeError::MultiRangeUnsupported)
+    ));
 }
 
 #[test]
 fn malformed_unit_is_rejected() {
-    assert!(matches!(resolve_range("items=0-9", 100), Err(RangeError::Malformed)));
+    assert!(matches!(
+        resolve_range("items=0-9", 100),
+        Err(RangeError::Malformed)
+    ));
 }
 
 #[test]
@@ -52,22 +61,34 @@ fn end_beyond_the_file_is_clamped_to_the_logical_size() {
 
 #[test]
 fn range_against_an_empty_file_is_unsatisfiable() {
-    assert!(matches!(resolve_range("bytes=0-9", 0), Err(RangeError::Unsatisfiable)));
+    assert!(matches!(
+        resolve_range("bytes=0-9", 0),
+        Err(RangeError::Unsatisfiable)
+    ));
 }
 
 #[test]
 fn zero_length_suffix_is_malformed() {
-    assert!(matches!(resolve_range("bytes=-0", 100), Err(RangeError::Malformed)));
+    assert!(matches!(
+        resolve_range("bytes=-0", 100),
+        Err(RangeError::Malformed)
+    ));
 }
 
 #[test]
 fn non_numeric_start_is_malformed() {
-    assert!(matches!(resolve_range("bytes=abc-9", 100), Err(RangeError::Malformed)));
+    assert!(matches!(
+        resolve_range("bytes=abc-9", 100),
+        Err(RangeError::Malformed)
+    ));
 }
 
 #[test]
 fn missing_dash_is_malformed() {
-    assert!(matches!(resolve_range("bytes=100", 100), Err(RangeError::Malformed)));
+    assert!(matches!(
+        resolve_range("bytes=100", 100),
+        Err(RangeError::Malformed)
+    ));
 }
 
 #[test]
@@ -82,4 +103,16 @@ fn end_near_u64_max_clamps_instead_of_overflowing() {
     let range = resolve_range("bytes=0-18446744073709551615", 100).unwrap();
     assert_eq!(range.start, 0);
     assert_eq!(range.end, 100);
+}
+
+#[test]
+fn reversed_range_is_malformed() {
+    assert!(matches!(
+        resolve_range("bytes=5-1", 11),
+        Err(RangeError::Malformed)
+    ));
+    assert!(matches!(
+        resolve_range("bytes=5-1", 100),
+        Err(RangeError::Malformed)
+    ));
 }

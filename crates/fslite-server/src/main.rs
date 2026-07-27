@@ -2,7 +2,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use fslite_core::{Capability, FileSystem, WorkspaceId};
-use fslite_server::{app, AppState, AuthenticatedActor, BearerTokenAuthProvider, SqliteWorkspaceAdmin};
+use fslite_server::{
+    AppState, AuthenticatedActor, BearerTokenAuthProvider, SqliteWorkspaceAdmin, app,
+};
 use fslite_sqlite::SqliteFileSystem;
 
 /// Parses `FSLITE_TOKENS`, a comma-separated list of `token=workspace_uuid`
@@ -15,13 +17,22 @@ fn tokens_from_env() -> HashMap<String, AuthenticatedActor> {
     let Ok(raw) = std::env::var("FSLITE_TOKENS") else {
         return tokens;
     };
-    for pair in raw.split(',').filter(|s| !s.is_empty()) {
+    for (index, pair) in raw.split(',').filter(|s| !s.is_empty()).enumerate() {
+        // Never log `pair` (or the token substring within it) — it carries
+        // the bearer secret. Only a non-secret identifier (the entry's
+        // index, or the parsed-but-invalid workspace-id substring) is safe
+        // to write to logs.
         let Some((token, workspace_id)) = pair.split_once('=') else {
-            tracing::warn!(pair, "ignoring malformed FSLITE_TOKENS entry");
+            tracing::warn!(index, "ignoring malformed FSLITE_TOKENS entry");
             continue;
         };
-        let Ok(workspace_id) = WorkspaceId::parse(workspace_id.trim()) else {
-            tracing::warn!(pair, "ignoring FSLITE_TOKENS entry with invalid workspace id");
+        let workspace_id_raw = workspace_id.trim();
+        let Ok(workspace_id) = WorkspaceId::parse(workspace_id_raw) else {
+            tracing::warn!(
+                index,
+                workspace_id = workspace_id_raw,
+                "ignoring FSLITE_TOKENS entry with invalid workspace id"
+            );
             continue;
         };
         tokens.insert(

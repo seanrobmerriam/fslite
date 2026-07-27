@@ -46,6 +46,11 @@ pub fn resolve_range(header: &str, logical_size: u64) -> Result<ByteRange, Range
         logical_size
     } else {
         let inclusive_end: u64 = end_str.parse().map_err(|_| RangeError::Malformed)?;
+        // RFC 9110 requires the range's last-byte-pos to be >= first-byte-pos;
+        // e.g. `bytes=5-1` is not a valid range, not an empty/unsatisfiable one.
+        if inclusive_end < start {
+            return Err(RangeError::Malformed);
+        }
         inclusive_end.saturating_add(1).min(logical_size)
     };
 

@@ -1,6 +1,6 @@
+use axum::Json;
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use fslite_core::{ErrorCode, FsError};
 use serde_json::json;
 
@@ -52,11 +52,25 @@ fn domain_status(code: ErrorCode) -> StatusCode {
 }
 
 fn code_str(code: ErrorCode) -> &'static str {
-    // `ErrorCode` already derives `Serialize` with `rename_all = "snake_case"`;
-    // reuse that instead of hand-maintaining a second name table.
-    match serde_json::to_value(code).expect("ErrorCode always serializes") {
-        serde_json::Value::String(s) => Box::leak(s.into_boxed_str()),
-        _ => unreachable!("ErrorCode serializes as a string"),
+    // Hand-maintained to match `ErrorCode`'s `#[serde(rename_all =
+    // "snake_case")]` output exactly, without leaking a new heap allocation
+    // per error response the way `Box::leak` would.
+    match code {
+        ErrorCode::InvalidPathOrName => "invalid_path_or_name",
+        ErrorCode::NotFound => "not_found",
+        ErrorCode::AlreadyExists => "already_exists",
+        ErrorCode::WrongNodeType => "wrong_node_type",
+        ErrorCode::DirectoryNotEmpty => "directory_not_empty",
+        ErrorCode::LinkLoop => "link_loop",
+        ErrorCode::BrokenLink => "broken_link",
+        ErrorCode::WorkspaceBoundaryViolation => "workspace_boundary_violation",
+        ErrorCode::PermissionDenied => "permission_denied",
+        ErrorCode::RevisionConflict => "revision_conflict",
+        ErrorCode::QuotaExceeded => "quota_exceeded",
+        ErrorCode::InvalidRange => "invalid_range",
+        ErrorCode::InvalidCursor => "invalid_cursor",
+        ErrorCode::StorageBusy => "storage_busy",
+        ErrorCode::InternalStorageFailure => "internal_storage_failure",
     }
 }
 
@@ -69,18 +83,24 @@ impl IntoResponse for ApiError {
                 err.message().to_string(),
                 err.details().clone(),
             ),
-            ApiError::Unauthenticated(message) => {
-                (StatusCode::UNAUTHORIZED, "unauthenticated", message, json!({}))
-            }
+            ApiError::Unauthenticated(message) => (
+                StatusCode::UNAUTHORIZED,
+                "unauthenticated",
+                message,
+                json!({}),
+            ),
             ApiError::WorkspaceMismatch => (
                 StatusCode::FORBIDDEN,
                 "workspace_mismatch",
                 "credential does not authorize this workspace".to_string(),
                 json!({}),
             ),
-            ApiError::MalformedBody(message) => {
-                (StatusCode::BAD_REQUEST, "malformed_body", message, json!({}))
-            }
+            ApiError::MalformedBody(message) => (
+                StatusCode::BAD_REQUEST,
+                "malformed_body",
+                message,
+                json!({}),
+            ),
             ApiError::RouteNotFound => (
                 StatusCode::NOT_FOUND,
                 "route_not_found",
@@ -99,9 +119,12 @@ impl IntoResponse for ApiError {
                 "request body exceeded the configured limit".to_string(),
                 json!({}),
             ),
-            ApiError::Internal(message) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal", message, json!({}))
-            }
+            ApiError::Internal(message) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                message,
+                json!({}),
+            ),
         };
 
         let mut response = (
@@ -117,5 +140,46 @@ impl IntoResponse for ApiError {
         }
 
         response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `code_str` hand-maintains the same strings `ErrorCode`'s derived
+    /// `#[serde(rename_all = "snake_case")] Serialize` impl already produces
+    /// (it used to just reuse that impl via `Box::leak`, which leaked memory
+    /// per error response). This guards the two from drifting apart.
+    #[test]
+    fn code_str_matches_error_code_serde_serialization_for_every_variant() {
+        let all = [
+            ErrorCode::InvalidPathOrName,
+            ErrorCode::NotFound,
+            ErrorCode::AlreadyExists,
+            ErrorCode::WrongNodeType,
+            ErrorCode::DirectoryNotEmpty,
+            ErrorCode::LinkLoop,
+            ErrorCode::BrokenLink,
+            ErrorCode::WorkspaceBoundaryViolation,
+            ErrorCode::PermissionDenied,
+            ErrorCode::RevisionConflict,
+            ErrorCode::QuotaExceeded,
+            ErrorCode::InvalidRange,
+            ErrorCode::InvalidCursor,
+            ErrorCode::StorageBusy,
+            ErrorCode::InternalStorageFailure,
+        ];
+        for code in all {
+            let serde_str = match serde_json::to_value(code).unwrap() {
+                serde_json::Value::String(s) => s,
+                _ => panic!("ErrorCode serializes as a string"),
+            };
+            assert_eq!(
+                code_str(code),
+                serde_str,
+                "code_str drifted from serde for {code:?}"
+            );
+        }
     }
 }
