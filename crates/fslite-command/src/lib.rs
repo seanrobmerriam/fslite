@@ -4,7 +4,11 @@
 
 mod bytes_b64;
 mod command;
+mod executor;
+mod local;
 mod output;
 
 pub use command::Command;
+pub use executor::Executor;
+pub use local::LocalExecutor;
 pub use output::CommandOutput;
