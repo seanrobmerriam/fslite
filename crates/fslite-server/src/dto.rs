@@ -17,6 +17,10 @@ pub fn query_bool(params: &HashMap<String, String>, key: &str, default: bool) ->
 }
 
 /// Reads a `u32` query parameter, defaulting when absent.
+///
+/// Not yet called within this task's own routes — it's shared infrastructure
+/// for upcoming tasks (7+) that take `u32` query params (e.g. `limit`).
+#[allow(dead_code)]
 pub fn query_u32(params: &HashMap<String, String>, key: &str, default: u32) -> Result<u32, ApiError> {
     match params.get(key) {
         None => Ok(default),
