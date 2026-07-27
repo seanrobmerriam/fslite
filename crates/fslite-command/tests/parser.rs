@@ -71,6 +71,12 @@ fn ls_accepts_cursor_and_limit_flags() {
 }
 
 #[test]
+fn ls_rejects_a_malformed_limit_instead_of_silently_dropping_it() {
+    let err = parse("ls /docs --limit=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "ls", name: "limit", .. }));
+}
+
+#[test]
 fn tree_reads_max_depth_and_follow_symlinks_flags() {
     assert_eq!(
         parse("tree /docs --max-depth=2 --follow-symlinks").unwrap(),
@@ -88,6 +94,12 @@ fn tree_defaults_have_no_max_depth_and_no_follow() {
         parse("tree /docs").unwrap(),
         Command::Tree { path: path("/docs"), options: TreeOptions::default(), page: PageRequest::default() }
     );
+}
+
+#[test]
+fn tree_rejects_a_malformed_limit_instead_of_silently_dropping_it() {
+    let err = parse("tree /docs --limit=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "tree", name: "limit", .. }));
 }
 
 #[test]
@@ -253,6 +265,12 @@ fn trash_ls_accepts_cursor_and_limit() {
 }
 
 #[test]
+fn trash_ls_rejects_a_malformed_limit_instead_of_silently_dropping_it() {
+    let err = parse("trash-ls --limit=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "trash-ls", name: "limit", .. }));
+}
+
+#[test]
 fn restore_takes_a_trash_id_and_defaults_destination_to_none() {
     let id = fslite_core::TrashId::new();
     let command = parse(&format!("restore {id}")).unwrap();
@@ -329,6 +347,12 @@ fn glob_takes_a_pattern() {
 }
 
 #[test]
+fn glob_rejects_a_malformed_limit_instead_of_silently_dropping_it() {
+    let err = parse("glob /*.txt --limit=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "glob", name: "limit", .. }));
+}
+
+#[test]
 fn find_reads_kind_and_name_contains_flags() {
     assert_eq!(
         parse("find / --kind=file --name-contains=report").unwrap(),
@@ -349,6 +373,52 @@ fn find_rejects_an_unknown_kind() {
 }
 
 #[test]
+fn find_reads_size_and_modified_time_bounds() {
+    assert_eq!(
+        parse("find / --min-size=10 --max-size=100 --modified-after=1000 --modified-before=2000").unwrap(),
+        Command::Find {
+            query: FindQuery::default()
+                .root(path("/"))
+                .min_logical_size(Some(10))
+                .max_logical_size(Some(100))
+                .modified_after_ms(Some(1000))
+                .modified_before_ms(Some(2000)),
+            page: PageRequest::default(),
+        }
+    );
+}
+
+#[test]
+fn find_rejects_a_malformed_min_size_instead_of_silently_dropping_it() {
+    let err = parse("find / --min-size=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "find", name: "min-size", .. }));
+}
+
+#[test]
+fn find_rejects_a_malformed_max_size_instead_of_silently_dropping_it() {
+    let err = parse("find / --max-size=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "find", name: "max-size", .. }));
+}
+
+#[test]
+fn find_rejects_a_malformed_modified_after_instead_of_silently_dropping_it() {
+    let err = parse("find / --modified-after=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "find", name: "modified-after", .. }));
+}
+
+#[test]
+fn find_rejects_a_malformed_modified_before_instead_of_silently_dropping_it() {
+    let err = parse("find / --modified-before=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "find", name: "modified-before", .. }));
+}
+
+#[test]
+fn find_rejects_a_malformed_limit_instead_of_silently_dropping_it() {
+    let err = parse("find / --limit=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "find", name: "limit", .. }));
+}
+
+#[test]
 fn grep_reads_root_and_needle() {
     assert_eq!(
         parse("grep / needle").unwrap(),
@@ -357,6 +427,12 @@ fn grep_reads_root_and_needle() {
             page: PageRequest::default(),
         }
     );
+}
+
+#[test]
+fn grep_rejects_a_malformed_limit_instead_of_silently_dropping_it() {
+    let err = parse("grep / needle --limit=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "grep", name: "limit", .. }));
 }
 
 #[test]
@@ -373,6 +449,12 @@ fn changes_accepts_an_after_flag() {
             page: PageRequest::default(),
         }
     );
+}
+
+#[test]
+fn changes_rejects_a_malformed_limit_instead_of_silently_dropping_it() {
+    let err = parse("changes --limit=abc").unwrap_err();
+    assert!(matches!(err, ParseError::InvalidArgument { verb: "changes", name: "limit", .. }));
 }
 
 #[test]

@@ -78,15 +78,20 @@ impl Args {
         }
     }
 
-    fn page(&self) -> PageRequest {
+    fn page(&self, verb: &'static str) -> Result<PageRequest, ParseError> {
         let mut page = PageRequest::default();
         if let Some(cursor) = self.flag_value("cursor") {
             page = page.cursor(Some(cursor.to_string()));
         }
-        if let Some(limit) = self.flag_value("limit").and_then(|v| v.parse().ok()) {
+        if let Some(limit) = self.flag_value("limit") {
+            let limit: u32 = limit.parse().map_err(|_| ParseError::InvalidArgument {
+                verb,
+                name: "limit",
+                reason: "must be a non-negative integer".into(),
+            })?;
             page = page.limit(limit);
         }
-        page
+        Ok(page)
     }
 }
 
@@ -143,7 +148,7 @@ pub fn parse(line: &str) -> Result<Command, ParseError> {
         "ls" => {
             args.check_known_flags("ls", &["cursor", "limit"])?;
             let path = parse_path("ls", "path", args.positional("ls", 0, "path")?)?;
-            Ok(Command::ReadDir { path, page: args.page() })
+            Ok(Command::ReadDir { path, page: args.page("ls")? })
         }
 
         "tree" => {
@@ -160,7 +165,7 @@ pub fn parse(line: &str) -> Result<Command, ParseError> {
                 })
                 .transpose()?;
             let options = TreeOptions::default().max_depth(max_depth).follow_symlinks(args.has_flag("follow-symlinks"));
-            Ok(Command::Tree { path, options, page: args.page() })
+            Ok(Command::Tree { path, options, page: args.page("tree")? })
         }
 
         "mkdir" => {
@@ -312,7 +317,7 @@ pub fn parse(line: &str) -> Result<Command, ParseError> {
 
         "trash-ls" => {
             args.check_known_flags("trash-ls", &["cursor", "limit"])?;
-            Ok(Command::ListTrash { page: args.page() })
+            Ok(Command::ListTrash { page: args.page("trash-ls")? })
         }
 
         "restore" => {
@@ -354,7 +359,7 @@ pub fn parse(line: &str) -> Result<Command, ParseError> {
         "glob" => {
             args.check_known_flags("glob", &["cursor", "limit"])?;
             let pattern = args.positional("glob", 0, "pattern")?.to_string();
-            Ok(Command::Glob { pattern, page: args.page() })
+            Ok(Command::Glob { pattern, page: args.page("glob")? })
         }
 
         "find" => {
@@ -372,15 +377,55 @@ pub fn parse(line: &str) -> Result<Command, ParseError> {
                     other => Err(ParseError::InvalidArgument { verb: "find", name: "kind", reason: format!("unknown kind `{other}`") }),
                 })
                 .transpose()?;
+            let min_logical_size = args
+                .flag_value("min-size")
+                .map(|v| {
+                    v.parse().map_err(|_| ParseError::InvalidArgument {
+                        verb: "find",
+                        name: "min-size",
+                        reason: "must be a non-negative integer".into(),
+                    })
+                })
+                .transpose()?;
+            let max_logical_size = args
+                .flag_value("max-size")
+                .map(|v| {
+                    v.parse().map_err(|_| ParseError::InvalidArgument {
+                        verb: "find",
+                        name: "max-size",
+                        reason: "must be a non-negative integer".into(),
+                    })
+                })
+                .transpose()?;
+            let modified_after_ms = args
+                .flag_value("modified-after")
+                .map(|v| {
+                    v.parse().map_err(|_| ParseError::InvalidArgument {
+                        verb: "find",
+                        name: "modified-after",
+                        reason: "must be an integer".into(),
+                    })
+                })
+                .transpose()?;
+            let modified_before_ms = args
+                .flag_value("modified-before")
+                .map(|v| {
+                    v.parse().map_err(|_| ParseError::InvalidArgument {
+                        verb: "find",
+                        name: "modified-before",
+                        reason: "must be an integer".into(),
+                    })
+                })
+                .transpose()?;
             let query = FindQuery::default()
                 .root(root)
                 .name_contains(args.flag_value("name-contains").map(str::to_string))
                 .kind(kind)
-                .min_logical_size(args.flag_value("min-size").and_then(|v| v.parse().ok()))
-                .max_logical_size(args.flag_value("max-size").and_then(|v| v.parse().ok()))
-                .modified_after_ms(args.flag_value("modified-after").and_then(|v| v.parse().ok()))
-                .modified_before_ms(args.flag_value("modified-before").and_then(|v| v.parse().ok()));
-            Ok(Command::Find { query, page: args.page() })
+                .min_logical_size(min_logical_size)
+                .max_logical_size(max_logical_size)
+                .modified_after_ms(modified_after_ms)
+                .modified_before_ms(modified_before_ms);
+            Ok(Command::Find { query, page: args.page("find")? })
         }
 
         "grep" => {
@@ -388,13 +433,13 @@ pub fn parse(line: &str) -> Result<Command, ParseError> {
             let root = parse_path("grep", "root", args.positional("grep", 0, "root")?)?;
             let needle = args.positional("grep", 1, "needle")?.as_bytes().to_vec();
             let query = ContentQuery::default().root(root).needle(needle);
-            Ok(Command::SearchContent { query, page: args.page() })
+            Ok(Command::SearchContent { query, page: args.page("grep")? })
         }
 
         "changes" => {
             args.check_known_flags("changes", &["after", "cursor", "limit"])?;
             let after = args.flag_value("after").map(|raw| fslite_core::ChangeCursor::new(raw.to_string()));
-            Ok(Command::Changes { after, page: args.page() })
+            Ok(Command::Changes { after, page: args.page("changes")? })
         }
 
         "batch" => {
