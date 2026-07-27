@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
-use fslite_command::{render_human, render_json, CommandOutput, Executor, LocalExecutor, RemoteExecutor};
+use fslite_command::{
+    CommandOutput, Executor, LocalExecutor, RemoteExecutor, render_human, render_json,
+};
 use fslite_core::{FileSystem, RequestContext, WorkspaceId};
 use fslite_sqlite::SqliteFileSystem;
 
@@ -108,12 +110,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// metacharacters) is re-quoted so the round trip through
 /// `fslite_command::lexer::tokenize` reconstructs the original word.
 fn quote_line(words: &[String]) -> String {
-    words.iter().map(|word| quote_word(word)).collect::<Vec<_>>().join(" ")
+    words
+        .iter()
+        .map(|word| quote_word(word))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn quote_word(word: &str) -> String {
     let needs_quoting = word.is_empty()
-        || word.chars().any(|ch| ch.is_whitespace() || ch == '\'' || ch == '"' || "|;&<>`".contains(ch));
+        || word
+            .chars()
+            .any(|ch| ch.is_whitespace() || ch == '\'' || ch == '"' || "|;&<>`".contains(ch));
     if !needs_quoting {
         return word.to_string();
     }
@@ -140,7 +148,10 @@ async fn open_local(cli: &Cli) -> Result<SqliteFileSystem, Box<dyn std::error::E
     if cli.memory {
         Ok(SqliteFileSystem::open_in_memory(Default::default()).await?)
     } else {
-        let path = cli.db.clone().ok_or("local mode requires --db <path> or --memory")?;
+        let path = cli
+            .db
+            .clone()
+            .ok_or("local mode requires --db <path> or --memory")?;
         Ok(SqliteFileSystem::open(path, Default::default()).await?)
     }
 }

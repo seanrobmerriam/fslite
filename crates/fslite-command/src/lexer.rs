@@ -38,7 +38,10 @@ pub enum LexError {
 /// Tokenizes one line of `fslite-command` grammar.
 pub fn tokenize(line: &str) -> Result<Vec<Token>, LexError> {
     if line.len() > MAX_LINE_LEN {
-        return Err(LexError::TooLong { max: MAX_LINE_LEN, actual: line.len() });
+        return Err(LexError::TooLong {
+            max: MAX_LINE_LEN,
+            actual: line.len(),
+        });
     }
     if line.contains('\0') {
         return Err(LexError::NulByte);
@@ -71,8 +74,14 @@ pub fn tokenize(line: &str) -> Result<Vec<Token>, LexError> {
 fn classify(word: String) -> Token {
     match word.strip_prefix("--") {
         Some(rest) => match rest.split_once('=') {
-            Some((name, value)) => Token::Flag { name: name.to_string(), value: Some(value.to_string()) },
-            None => Token::Flag { name: rest.to_string(), value: None },
+            Some((name, value)) => Token::Flag {
+                name: name.to_string(),
+                value: Some(value.to_string()),
+            },
+            None => Token::Flag {
+                name: rest.to_string(),
+                value: None,
+            },
         },
         None => Token::Word(word),
     }
@@ -123,7 +132,9 @@ fn read_word(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Result<Str
     Ok(word)
 }
 
-fn read_single_quoted(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Result<String, LexError> {
+fn read_single_quoted(
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+) -> Result<String, LexError> {
     let mut content = String::new();
     loop {
         match chars.next() {
@@ -134,7 +145,9 @@ fn read_single_quoted(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> R
     }
 }
 
-fn read_double_quoted(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Result<String, LexError> {
+fn read_double_quoted(
+    chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+) -> Result<String, LexError> {
     let mut content = String::new();
     loop {
         match chars.next() {

@@ -1,4 +1,4 @@
-use fslite_command::lexer::{tokenize, LexError, Token};
+use fslite_command::lexer::{LexError, Token, tokenize};
 
 #[test]
 fn splits_on_unquoted_whitespace() {
@@ -8,7 +8,10 @@ fn splits_on_unquoted_whitespace() {
         vec![
             Token::Word("mkdir".into()),
             Token::Word("/docs".into()),
-            Token::Flag { name: "parents".into(), value: None },
+            Token::Flag {
+                name: "parents".into(),
+                value: None
+            },
         ]
     );
 }
@@ -34,17 +37,29 @@ fn double_quotes_support_a_small_constrained_escape_set() {
 #[test]
 fn flag_with_inline_value() {
     let tokens = tokenize("write /a.txt --expected-revision=7").unwrap();
-    assert_eq!(tokens[2], Token::Flag { name: "expected-revision".into(), value: Some("7".into()) });
+    assert_eq!(
+        tokens[2],
+        Token::Flag {
+            name: "expected-revision".into(),
+            value: Some("7".into())
+        }
+    );
 }
 
 #[test]
 fn unterminated_single_quote_is_a_parse_error_not_a_hang() {
-    assert_eq!(tokenize("write 'oops").unwrap_err(), LexError::UnterminatedQuote);
+    assert_eq!(
+        tokenize("write 'oops").unwrap_err(),
+        LexError::UnterminatedQuote
+    );
 }
 
 #[test]
 fn unterminated_double_quote_is_a_parse_error() {
-    assert_eq!(tokenize(r#"write "oops"#).unwrap_err(), LexError::UnterminatedQuote);
+    assert_eq!(
+        tokenize(r#"write "oops"#).unwrap_err(),
+        LexError::UnterminatedQuote
+    );
 }
 
 #[test]
@@ -66,8 +81,19 @@ fn oversized_input_is_rejected_before_tokenizing() {
 
 #[test]
 fn unquoted_shell_metacharacters_are_rejected_not_silently_literal() {
-    for input in ["ls /a | rm /b", "ls /a; rm /b", "ls /a && rm /b", "ls /a > out", "ls `whoami`", "ls $(whoami)", "ls /a &"] {
-        assert!(matches!(tokenize(input), Err(LexError::UnsupportedMetacharacter(_))), "expected rejection for: {input}");
+    for input in [
+        "ls /a | rm /b",
+        "ls /a; rm /b",
+        "ls /a && rm /b",
+        "ls /a > out",
+        "ls `whoami`",
+        "ls $(whoami)",
+        "ls /a &",
+    ] {
+        assert!(
+            matches!(tokenize(input), Err(LexError::UnsupportedMetacharacter(_))),
+            "expected rejection for: {input}"
+        );
     }
 }
 
