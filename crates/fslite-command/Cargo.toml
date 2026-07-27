@@ -16,5 +16,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+axum.workspace = true
+fslite-server = { path = "../fslite-server" }
 fslite-sqlite = { path = "../fslite-sqlite" }
 tokio = { workspace = true, features = ["full"] }
