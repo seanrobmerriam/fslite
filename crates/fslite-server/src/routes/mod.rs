@@ -8,6 +8,7 @@ use serde_json::json;
 use crate::error::ApiError;
 use crate::state::AppState;
 
+pub mod directories;
 pub mod nodes;
 
 pub fn health_router() -> Router<AppState> {
