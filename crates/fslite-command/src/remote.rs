@@ -249,7 +249,27 @@ impl Executor for RemoteExecutor {
             }
 
             Command::Read { path, options } => {
-                let node = self.stat(ctx, &path, options.follow_symlinks).await?;
+                // `fslite-server`'s `GET /content/{*path}` route has no
+                // `follow_symlinks` query parameter at all: it always reads
+                // through `ReadOptions::default()` (`follow_symlinks: true`)
+                // server-side, regardless of what this executor's own
+                // `stat` pre-fetch below is asked to honor (see
+                // `crates/fslite-server/src/routes/content.rs`). Silently
+                // proceeding when the caller explicitly asked not to follow
+                // symlinks would return a `CommandOutput::Content` whose
+                // `revision`/`logical_length` (taken from the *unfollowed*
+                // stat) don't correspond to `bytes` (always read from the
+                // *followed* target) — a silent correctness bug, not just a
+                // limitation. This fails loudly instead. `fslite-server` is
+                // out of scope to extend with a new query parameter in this
+                // task, so there is no way to honor the request correctly.
+                if !options.follow_symlinks {
+                    return Err(FsError::internal_storage_failure(
+                        "RemoteExecutor cannot honor follow_symlinks=false for read: \
+                         fslite-server's content route always follows symlinks",
+                    ));
+                }
+                let node = self.stat(ctx, &path, true).await?;
                 let mut builder = self.client.get(self.url(
                     ctx.workspace_id,
                     &format!("/content{}", path.as_str()),
@@ -260,7 +280,31 @@ impl Executor for RemoteExecutor {
                         format!("bytes={}-{}", range.start, range.end.saturating_sub(1)),
                     );
                 }
-                let response = self.send_checked(builder).await?;
+                let response = builder
+                    .bearer_auth(&self.token)
+                    .send()
+                    .await
+                    .map_err(map_reqwest_err)?;
+                // `fslite-server` returns a bodyless, envelope-free `416
+                // Range Not Satisfiable` for this one specific case (every
+                // other error path in that crate, including a reversed
+                // range, goes through the JSON `ApiError` envelope — see
+                // `crates/fslite-server/src/routes/content.rs`). Without
+                // this special case it would fall through to
+                // `error_from_response`'s generic "unrecognized error
+                // response" branch and get misreported as
+                // `ErrorCode::InternalStorageFailure` instead of the
+                // `ErrorCode::InvalidRange` `LocalExecutor` would surface
+                // directly from the same domain condition.
+                if response.status() == StatusCode::RANGE_NOT_SATISFIABLE {
+                    return Err(FsError::invalid_range(format!(
+                        "range not satisfiable for {}",
+                        path.as_str()
+                    )));
+                }
+                if !response.status().is_success() {
+                    return Err(Self::error_from_response(response).await);
+                }
                 let content_range_bounds = response
                     .headers()
                     .get(reqwest::header::CONTENT_RANGE)

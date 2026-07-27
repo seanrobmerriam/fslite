@@ -3,8 +3,8 @@ use std::sync::Arc;
 use base64::Engine;
 use fslite_command::{Command, CommandOutput, Executor, LocalExecutor, RemoteExecutor};
 use fslite_core::{
-    BatchOperation, CopyOptions, FindQuery, MoveOptions, MutationOptions, RequestContext,
-    VirtualPath, WriteOptions,
+    BatchOperation, ByteRange, CopyOptions, ErrorCode, FindQuery, MoveOptions, MutationOptions,
+    ReadOptions, RequestContext, VirtualPath, WriteOptions,
 };
 use fslite_server::{AppState, AuthenticatedActor, BearerTokenAuthProvider, SqliteWorkspaceAdmin};
 use fslite_sqlite::SqliteFileSystem;
@@ -527,4 +527,112 @@ async fn remote_batch_round_trip() {
         .await
         .unwrap();
     assert_eq!(file_exists, CommandOutput::Exists(true));
+}
+
+/// Regression test: `fslite-server`'s `GET /content/{*path}` route has no
+/// `follow_symlinks` query parameter at all, and the `fslite-sqlite`
+/// backend's `content::read` never consults `ReadOptions::follow_symlinks`
+/// either way (it resolves the literal path only, via `resolve::resolve`,
+/// not `resolve_following` — confirmed directly: reading a symlink path
+/// fails `WrongNodeType` on *both* `LocalExecutor` and `RemoteExecutor`,
+/// regardless of `follow_symlinks`, which is itself a pre-existing
+/// `fslite-sqlite` characteristic out of scope for this task to change).
+///
+/// Because `RemoteExecutor`'s own `stat` pre-fetch *does* honor
+/// `follow_symlinks`, if a future backend ever implements symlink-following
+/// reads, `RemoteExecutor` would otherwise silently return a
+/// `CommandOutput::Content` whose `revision`/`logical_length` (from an
+/// unfollowed `stat`) don't correspond to `bytes` (from a followed content
+/// fetch it cannot control). So the guard rejects `follow_symlinks: false`
+/// unconditionally, regardless of what kind of node the path resolves to —
+/// this test exercises it directly against a plain regular file, which is
+/// sufficient to prove the guard fires before any HTTP call is made.
+#[tokio::test]
+async fn remote_read_rejects_follow_symlinks_false() {
+    let (remote, _local, ctx) = dual_fixture().await;
+    let path = VirtualPath::parse("/plain.txt").unwrap();
+
+    remote
+        .execute(
+            &ctx,
+            Command::Write {
+                path: path.clone(),
+                bytes: b"plain content".to_vec(),
+                options: WriteOptions::default(),
+            },
+        )
+        .await
+        .unwrap();
+
+    // The default (`follow_symlinks: true`) still works normally over HTTP.
+    let following = remote
+        .execute(
+            &ctx,
+            Command::Read {
+                path: path.clone(),
+                options: ReadOptions::default(),
+            },
+        )
+        .await
+        .unwrap();
+    match following {
+        CommandOutput::Content { bytes, .. } => assert_eq!(bytes, b"plain content"),
+        other => panic!("expected Content, got {other:?}"),
+    }
+
+    // A read that explicitly asks not to follow symlinks must fail loudly
+    // — `RemoteExecutor` cannot honor it for the content fetch itself and
+    // must not silently mix unfollowed metadata with a followed read.
+    let err = remote
+        .execute(
+            &ctx,
+            Command::Read {
+                path,
+                options: ReadOptions::default().follow_symlinks(false),
+            },
+        )
+        .await
+        .expect_err("RemoteExecutor must reject follow_symlinks=false for read");
+    assert!(
+        err.message().contains("follow_symlinks"),
+        "expected a clear follow_symlinks error, got: {}",
+        err.message()
+    );
+}
+
+/// Regression test: `fslite-server`'s content route returns a bodyless,
+/// envelope-free `416 Range Not Satisfiable` for a range that starts at or
+/// beyond the file's logical size — unlike every other error path in that
+/// crate, which goes through the JSON `ApiError` envelope. `RemoteExecutor`
+/// must still surface `ErrorCode::InvalidRange` for this case (matching
+/// what `LocalExecutor` reports directly from `fslite_core`), not fall
+/// through to a generic `ErrorCode::InternalStorageFailure`.
+#[tokio::test]
+async fn remote_read_out_of_bounds_range_reports_invalid_range() {
+    let (remote, _local, ctx) = dual_fixture().await;
+    let path = VirtualPath::parse("/short.txt").unwrap();
+
+    remote
+        .execute(
+            &ctx,
+            Command::Write {
+                path: path.clone(),
+                bytes: b"short".to_vec(), // 5 bytes
+                options: WriteOptions::default(),
+            },
+        )
+        .await
+        .unwrap();
+
+    let err = remote
+        .execute(
+            &ctx,
+            Command::Read {
+                path,
+                options: ReadOptions::default().range(Some(ByteRange::new(10, 20))),
+            },
+        )
+        .await
+        .expect_err("an out-of-bounds range must be rejected");
+    assert_eq!(err.code(), ErrorCode::InvalidRange);
 }
