@@ -1,9 +1,9 @@
 mod support;
 
+use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::routing::get;
-use axum::Router;
 use fslite_server::{AppState, Ctx};
 use tower::ServiceExt;
 

@@ -17,9 +17,7 @@ pub async fn request_id(mut request: Request, next: Next) -> Response {
         .map(str::to_string)
         .unwrap_or_else(|| Uuid::now_v7().to_string());
 
-    request
-        .extensions_mut()
-        .insert(RequestId(id.clone()));
+    request.extensions_mut().insert(RequestId(id.clone()));
 
     let mut response = next.run(request).await;
     if let Ok(value) = HeaderValue::from_str(&id) {
@@ -33,6 +31,8 @@ pub async fn request_id(mut request: Request, next: Next) -> Response {
 pub struct RequestId(pub String);
 
 /// A `tower-http` layer logging method, path, status, and latency per request.
-pub fn trace_layer() -> TraceLayer<tower_http::classify::SharedClassifier<tower_http::classify::ServerErrorsAsFailures>> {
+pub fn trace_layer()
+-> TraceLayer<tower_http::classify::SharedClassifier<tower_http::classify::ServerErrorsAsFailures>>
+{
     TraceLayer::new_for_http()
 }

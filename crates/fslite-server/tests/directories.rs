@@ -17,23 +17,35 @@ async fn put_with_type_directory_creates_a_directory() {
     let (state, workspace_id) = support::fixture().await;
     let response = app(state.clone())
         .oneshot(
-            auth(Request::builder()
-                .method(Method::PUT)
-                .uri(format!("/v1/workspaces/{workspace_id}/fs/docs?type=directory"))
-                .header("content-type", "application/json"))
-                .body(Body::from(json!({"parents": true, "exist_ok": false}).to_string()))
-                .unwrap(),
+            auth(
+                Request::builder()
+                    .method(Method::PUT)
+                    .uri(format!(
+                        "/v1/workspaces/{workspace_id}/fs/docs?type=directory"
+                    ))
+                    .header("content-type", "application/json"),
+            )
+            .body(Body::from(
+                json!({"parents": true, "exist_ok": false}).to_string(),
+            ))
+            .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(response.status(), 200);
 
     let ctx = RequestContext::trusted(workspace_id);
-    assert!(state
-        .fs
-        .exists(&ctx, &VirtualPath::parse("/docs").unwrap(), Default::default())
-        .await
-        .unwrap());
+    assert!(
+        state
+            .fs
+            .exists(
+                &ctx,
+                &VirtualPath::parse("/docs").unwrap(),
+                Default::default()
+            )
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test]
@@ -42,15 +54,22 @@ async fn children_lists_direct_descendants() {
     let ctx = RequestContext::trusted(workspace_id);
     state
         .fs
-        .write(&ctx, &VirtualPath::parse("/a.txt").unwrap(), WriteSource::from_bytes(b"x".to_vec()), Default::default())
+        .write(
+            &ctx,
+            &VirtualPath::parse("/a.txt").unwrap(),
+            WriteSource::from_bytes(b"x".to_vec()),
+            Default::default(),
+        )
         .await
         .unwrap();
 
     let response = app(state)
         .oneshot(
-            auth(Request::builder().uri(format!("/v1/workspaces/{workspace_id}/directories//children")))
-                .body(Body::empty())
-                .unwrap(),
+            auth(Request::builder().uri(format!(
+                "/v1/workspaces/{workspace_id}/directories//children"
+            )))
+            .body(Body::empty())
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -66,12 +85,18 @@ async fn put_with_type_symlink_creates_a_symlink() {
     let (state, workspace_id) = support::fixture().await;
     let response = app(state.clone())
         .oneshot(
-            auth(Request::builder()
-                .method(Method::PUT)
-                .uri(format!("/v1/workspaces/{workspace_id}/fs/link?type=symlink"))
-                .header("content-type", "application/json"))
-                .body(Body::from(json!({"target": "/docs/readme.txt"}).to_string()))
-                .unwrap(),
+            auth(
+                Request::builder()
+                    .method(Method::PUT)
+                    .uri(format!(
+                        "/v1/workspaces/{workspace_id}/fs/link?type=symlink"
+                    ))
+                    .header("content-type", "application/json"),
+            )
+            .body(Body::from(
+                json!({"target": "/docs/readme.txt"}).to_string(),
+            ))
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -96,7 +121,11 @@ async fn tree_lists_a_nested_file_with_its_depth() {
     let ctx = RequestContext::trusted(workspace_id);
     state
         .fs
-        .mkdir(&ctx, &VirtualPath::parse("/docs").unwrap(), Default::default())
+        .mkdir(
+            &ctx,
+            &VirtualPath::parse("/docs").unwrap(),
+            Default::default(),
+        )
         .await
         .unwrap();
     state
@@ -112,9 +141,11 @@ async fn tree_lists_a_nested_file_with_its_depth() {
 
     let response = app(state)
         .oneshot(
-            auth(Request::builder().uri(format!("/v1/workspaces/{workspace_id}/directories//tree")))
-                .body(Body::empty())
-                .unwrap(),
+            auth(
+                Request::builder().uri(format!("/v1/workspaces/{workspace_id}/directories//tree")),
+            )
+            .body(Body::empty())
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -144,9 +175,11 @@ async fn dispatch_rejects_a_suffix_that_is_neither_children_nor_tree() {
     let (state, workspace_id) = support::fixture().await;
     let response = app(state)
         .oneshot(
-            auth(Request::builder().uri(format!("/v1/workspaces/{workspace_id}/directories/docs/bogus")))
-                .body(Body::empty())
-                .unwrap(),
+            auth(Request::builder().uri(format!(
+                "/v1/workspaces/{workspace_id}/directories/docs/bogus"
+            )))
+            .body(Body::empty())
+            .unwrap(),
         )
         .await
         .unwrap();

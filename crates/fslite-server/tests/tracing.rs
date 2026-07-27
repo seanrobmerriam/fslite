@@ -33,5 +33,8 @@ async fn a_client_supplied_request_id_is_echoed_back() {
         )
         .await
         .unwrap();
-    assert_eq!(response.headers().get("x-request-id").unwrap(), "caller-supplied-id");
+    assert_eq!(
+        response.headers().get("x-request-id").unwrap(),
+        "caller-supplied-id"
+    );
 }

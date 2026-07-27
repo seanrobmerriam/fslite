@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use async_trait::async_trait;
 use axum::extract::{FromRef, FromRequestParts, Path};
-use axum::http::request::Parts;
 use axum::http::HeaderMap;
+use axum::http::request::Parts;
 use fslite_core::{Capability, RequestContext, WorkspaceId};
 use serde_json::Value;
 

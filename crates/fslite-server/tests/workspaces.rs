@@ -6,7 +6,9 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::Request;
 use fslite_core::{Capability, FileSystem, WorkspaceId};
-use fslite_server::{app, AppState, AuthenticatedActor, BearerTokenAuthProvider, SqliteWorkspaceAdmin};
+use fslite_server::{
+    AppState, AuthenticatedActor, BearerTokenAuthProvider, SqliteWorkspaceAdmin, app,
+};
 use fslite_sqlite::SqliteFileSystem;
 use http_body_util::BodyExt;
 use serde::Deserialize;
@@ -78,7 +80,10 @@ async fn create_workspace_without_workspace_admin_capability_is_forbidden() {
             .await
             .unwrap(),
     );
-    let workspace = sqlite_fs.create_workspace(Default::default()).await.unwrap();
+    let workspace = sqlite_fs
+        .create_workspace(Default::default())
+        .await
+        .unwrap();
 
     let limited_token = "limited-token";
     let mut tokens = HashMap::new();

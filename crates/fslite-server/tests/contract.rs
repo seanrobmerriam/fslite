@@ -28,12 +28,16 @@ async fn full_resource_lifecycle_via_http() {
     let mkdir = app_router
         .clone()
         .oneshot(
-            auth(Request::builder()
-                .method(Method::PUT)
-                .uri(format!("/v1/workspaces/{workspace_id}/fs/docs?type=directory"))
-                .header("content-type", "application/json"))
-                .body(Body::from("{}"))
-                .unwrap(),
+            auth(
+                Request::builder()
+                    .method(Method::PUT)
+                    .uri(format!(
+                        "/v1/workspaces/{workspace_id}/fs/docs?type=directory"
+                    ))
+                    .header("content-type", "application/json"),
+            )
+            .body(Body::from("{}"))
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -42,11 +46,11 @@ async fn full_resource_lifecycle_via_http() {
     let put = app_router
         .clone()
         .oneshot(
-            auth(Request::builder()
-                .method(Method::PUT)
-                .uri(format!("/v1/workspaces/{workspace_id}/content/docs/readme.txt")))
-                .body(Body::from("hello contract"))
-                .unwrap(),
+            auth(Request::builder().method(Method::PUT).uri(format!(
+                "/v1/workspaces/{workspace_id}/content/docs/readme.txt"
+            )))
+            .body(Body::from("hello contract"))
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -58,9 +62,11 @@ async fn full_resource_lifecycle_via_http() {
     let children = app_router
         .clone()
         .oneshot(
-            auth(Request::builder().uri(format!("/v1/workspaces/{workspace_id}/directories/docs/children")))
-                .body(Body::empty())
-                .unwrap(),
+            auth(Request::builder().uri(format!(
+                "/v1/workspaces/{workspace_id}/directories/docs/children"
+            )))
+            .body(Body::empty())
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -71,11 +77,11 @@ async fn full_resource_lifecycle_via_http() {
     let stale_write = app_router
         .clone()
         .oneshot(
-            auth(Request::builder()
-                .method(Method::PUT)
-                .uri(format!("/v1/workspaces/{workspace_id}/content/docs/readme.txt?expected_revision=999")))
-                .body(Body::from("stale"))
-                .unwrap(),
+            auth(Request::builder().method(Method::PUT).uri(format!(
+                "/v1/workspaces/{workspace_id}/content/docs/readme.txt?expected_revision=999"
+            )))
+            .body(Body::from("stale"))
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -88,14 +94,12 @@ async fn full_resource_lifecycle_via_http() {
     let good_write = app_router
         .clone()
         .oneshot(
-            auth(Request::builder()
-                .method(Method::PUT)
-                .uri(format!(
-                    "/v1/workspaces/{workspace_id}/content/docs/readme.txt?expected_revision={}",
-                    first_revision.as_u64().unwrap()
-                )))
-                .body(Body::from("updated"))
-                .unwrap(),
+            auth(Request::builder().method(Method::PUT).uri(format!(
+                "/v1/workspaces/{workspace_id}/content/docs/readme.txt?expected_revision={}",
+                first_revision.as_u64().unwrap()
+            )))
+            .body(Body::from("updated"))
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -104,12 +108,16 @@ async fn full_resource_lifecycle_via_http() {
     let trash = app_router
         .clone()
         .oneshot(
-            auth(Request::builder()
-                .method(Method::POST)
-                .uri(format!("/v1/workspaces/{workspace_id}/fs/docs/readme.txt?action=trash"))
-                .header("content-type", "application/json"))
-                .body(Body::from("{}"))
-                .unwrap(),
+            auth(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!(
+                        "/v1/workspaces/{workspace_id}/fs/docs/readme.txt?action=trash"
+                    ))
+                    .header("content-type", "application/json"),
+            )
+            .body(Body::from("{}"))
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -120,12 +128,16 @@ async fn full_resource_lifecycle_via_http() {
     let restore = app_router
         .clone()
         .oneshot(
-            auth(Request::builder()
-                .method(Method::POST)
-                .uri(format!("/v1/workspaces/{workspace_id}/trash/{trash_id}/restore"))
-                .header("content-type", "application/json"))
-                .body(Body::from("{}"))
-                .unwrap(),
+            auth(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!(
+                        "/v1/workspaces/{workspace_id}/trash/{trash_id}/restore"
+                    ))
+                    .header("content-type", "application/json"),
+            )
+            .body(Body::from("{}"))
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -134,11 +146,13 @@ async fn full_resource_lifecycle_via_http() {
     let remove = app_router
         .clone()
         .oneshot(
-            auth(Request::builder()
-                .method(Method::DELETE)
-                .uri(format!("/v1/workspaces/{workspace_id}/fs/docs/readme.txt")))
-                .body(Body::empty())
-                .unwrap(),
+            auth(
+                Request::builder()
+                    .method(Method::DELETE)
+                    .uri(format!("/v1/workspaces/{workspace_id}/fs/docs/readme.txt")),
+            )
+            .body(Body::empty())
+            .unwrap(),
         )
         .await
         .unwrap();
@@ -162,16 +176,21 @@ async fn range_not_satisfiable_returns_416_with_total_length() {
 
     let response = app(state)
         .oneshot(
-            auth(Request::builder()
-                .uri(format!("/v1/workspaces/{workspace_id}/content/a.txt"))
-                .header("range", "bytes=100-200"))
-                .body(Body::empty())
-                .unwrap(),
+            auth(
+                Request::builder()
+                    .uri(format!("/v1/workspaces/{workspace_id}/content/a.txt"))
+                    .header("range", "bytes=100-200"),
+            )
+            .body(Body::empty())
+            .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::RANGE_NOT_SATISFIABLE);
-    assert_eq!(response.headers().get("content-range").unwrap(), "bytes */5");
+    assert_eq!(
+        response.headers().get("content-range").unwrap(),
+        "bytes */5"
+    );
 }
 
 #[tokio::test]
@@ -179,9 +198,11 @@ async fn every_error_response_is_valid_json_with_the_envelope_shape() {
     let (state, workspace_id) = support::fixture().await;
     let response = app(state)
         .oneshot(
-            auth(Request::builder().uri(format!("/v1/workspaces/{workspace_id}/fs/does-not-exist")))
-                .body(Body::empty())
-                .unwrap(),
+            auth(
+                Request::builder().uri(format!("/v1/workspaces/{workspace_id}/fs/does-not-exist")),
+            )
+            .body(Body::empty())
+            .unwrap(),
         )
         .await
         .unwrap();
