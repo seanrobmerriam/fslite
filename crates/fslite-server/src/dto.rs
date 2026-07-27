@@ -2,7 +2,9 @@
 
 use std::collections::HashMap;
 
-use fslite_core::Revision;
+use base64::Engine;
+use fslite_core::{ByteRange, ContentQuery, Node, Revision, SearchMatch, VirtualPath};
+use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
 
@@ -37,6 +39,45 @@ pub fn query_revision(params: &HashMap<String, String>) -> Result<Option<Revisio
             Revision::new(raw)
                 .map(Some)
                 .ok_or_else(|| ApiError::MalformedBody("expected_revision must be nonzero".into()))
+        }
+    }
+}
+
+/// The wire shape of a content-search request: `ContentQuery` with its raw
+/// `needle: Vec<u8>` field replaced by a base64 string for a sane JSON body.
+#[derive(Deserialize)]
+pub struct ContentQueryRequest {
+    pub root: VirtualPath,
+    pub needle_base64: String,
+}
+
+impl TryFrom<ContentQueryRequest> for ContentQuery {
+    type Error = ApiError;
+
+    fn try_from(value: ContentQueryRequest) -> Result<Self, Self::Error> {
+        let needle = base64::engine::general_purpose::STANDARD
+            .decode(value.needle_base64)
+            .map_err(|e| ApiError::MalformedBody(format!("invalid base64 needle: {e}")))?;
+        Ok(ContentQuery::default().root(value.root).needle(needle))
+    }
+}
+
+/// The wire shape of a `SearchMatch`: `preview: Vec<u8>` becomes base64.
+#[derive(Serialize)]
+pub struct SearchMatchDto {
+    pub node: Node,
+    pub path: VirtualPath,
+    pub range: ByteRange,
+    pub preview_base64: String,
+}
+
+impl From<SearchMatch> for SearchMatchDto {
+    fn from(value: SearchMatch) -> Self {
+        Self {
+            node: value.node,
+            path: value.path,
+            range: value.range,
+            preview_base64: base64::engine::general_purpose::STANDARD.encode(value.preview),
         }
     }
 }

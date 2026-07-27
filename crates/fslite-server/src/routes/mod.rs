@@ -11,6 +11,7 @@ use crate::state::AppState;
 pub mod content;
 pub mod directories;
 pub mod nodes;
+pub mod search;
 pub mod trash;
 
 pub fn health_router() -> Router<AppState> {

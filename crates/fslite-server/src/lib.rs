@@ -26,6 +26,7 @@ pub fn app(state: AppState) -> Router {
         .merge(routes::directories::router())
         .merge(routes::trash::router())
         .merge(routes::content::router())
+        .merge(routes::search::router())
         .with_state(state)
         .layer(middleware::from_fn(tracing_mw::request_id))
         .layer(tracing_mw::trace_layer())
