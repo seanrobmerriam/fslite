@@ -1,8 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
-use fslite_core::{Capability, WorkspaceId};
-use fslite_server::{app, AppState, AuthenticatedActor, BearerTokenAuthProvider};
+use fslite_core::{Capability, FileSystem, WorkspaceId};
+use fslite_server::{app, AppState, AuthenticatedActor, BearerTokenAuthProvider, SqliteWorkspaceAdmin};
 use fslite_sqlite::SqliteFileSystem;
 
 /// Parses `FSLITE_TOKENS`, a comma-separated list of `token=workspace_uuid`
@@ -46,11 +46,12 @@ fn tokens_from_env() -> HashMap<String, AuthenticatedActor> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let fs = SqliteFileSystem::open_in_memory(Default::default()).await?;
+    let sqlite_fs = Arc::new(SqliteFileSystem::open_in_memory(Default::default()).await?);
     let health_workspace = WorkspaceId::new();
     let state = AppState {
-        fs: Arc::new(fs),
+        fs: sqlite_fs.clone() as Arc<dyn FileSystem>,
         auth: Arc::new(BearerTokenAuthProvider::new(tokens_from_env())),
+        admin: Arc::new(SqliteWorkspaceAdmin(sqlite_fs)),
         health_workspace,
     };
 
