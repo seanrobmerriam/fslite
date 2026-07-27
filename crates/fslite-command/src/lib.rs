@@ -9,6 +9,7 @@ pub mod lexer;
 mod local;
 mod output;
 pub mod parser;
+pub mod render;
 
 pub use command::Command;
 pub use executor::Executor;
