@@ -267,3 +267,32 @@ fn json_flag_prints_machine_readable_output() {
     let parsed: serde_json::Value = serde_json::from_slice(&usage.stdout).unwrap();
     assert!(parsed["usage"]["active_nodes"].is_number());
 }
+
+/// Regression test: `clap`'s default `env` rendering prints the *value* of
+/// an env-sourced argument in `--help` output. Since `FSLITE_TOKEN` exists
+/// specifically to keep the bearer token off argv and out of shell
+/// history, having `--help` echo it right back in plain text would defeat
+/// the whole point — `--help` output gets pasted into bug reports and
+/// terminal recordings far more casually than anyone would share their
+/// shell history. Sets a real, distinctive token via `FSLITE_TOKEN` and
+/// asserts it never appears in `--help`'s stdout, while the flag and its
+/// env var name still do (i.e. this isn't testing that `--help` stopped
+/// documenting the flag at all).
+#[test]
+fn help_does_not_print_the_fslite_token_value() {
+    let output = cli()
+        .env("FSLITE_TOKEN", "s3cr3t-do-not-print-me")
+        .arg("--help")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        !stdout.contains("s3cr3t-do-not-print-me"),
+        "--help printed the FSLITE_TOKEN value: {stdout}"
+    );
+    assert!(
+        stdout.contains("--token") && stdout.contains("FSLITE_TOKEN"),
+        "expected --help to still document the --token flag and its env var, got: {stdout}"
+    );
+}

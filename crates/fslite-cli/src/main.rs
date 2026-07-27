@@ -34,7 +34,12 @@ struct Cli {
     /// on Linux, argv (and therefore a flag value) is world-readable via
     /// `/proc/<pid>/cmdline` for the process's lifetime and also lands in
     /// shell history, while an environment variable does not.
-    #[arg(long, env = "FSLITE_TOKEN", requires = "server")]
+    #[arg(
+        long,
+        env = "FSLITE_TOKEN",
+        hide_env_values = true,
+        requires = "server"
+    )]
     token: Option<String>,
 
     /// Creates a new workspace, prints its id, and exits.
