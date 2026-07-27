@@ -5,6 +5,7 @@
 mod bytes_b64;
 mod command;
 mod executor;
+pub mod lexer;
 mod local;
 mod output;
 
