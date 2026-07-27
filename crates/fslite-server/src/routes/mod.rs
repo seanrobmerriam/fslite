@@ -14,6 +14,7 @@ pub mod directories;
 pub mod nodes;
 pub mod search;
 pub mod trash;
+pub mod workspaces;
 
 pub fn health_router() -> Router<AppState> {
     Router::new()
