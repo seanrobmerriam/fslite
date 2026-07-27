@@ -1,0 +1,21 @@
+[package]
+name = "fslite-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "fslite-cli"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+fslite-command = { path = "../fslite-command" }
+fslite-core = { path = "../fslite-core" }
+fslite-sqlite = { path = "../fslite-sqlite" }
+tokio = { workspace = true, features = ["full"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true

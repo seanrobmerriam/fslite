@@ -6,6 +6,7 @@ members = [
   "crates/fslite-conformance",
   "crates/fslite-server",
   "crates/fslite-command",
+  "crates/fslite-cli",
 ]
 
 [workspace.package]
