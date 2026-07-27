@@ -47,10 +47,7 @@ impl RemoteExecutor {
 
     /// Attaches the bearer token, sends `builder`, and maps a non-2xx
     /// response into a typed [`FsError`] via [`Self::error_from_response`].
-    async fn send_checked(
-        &self,
-        builder: reqwest::RequestBuilder,
-    ) -> FsResult<reqwest::Response> {
+    async fn send_checked(&self, builder: reqwest::RequestBuilder) -> FsResult<reqwest::Response> {
         let response = builder
             .bearer_auth(&self.token)
             .send()
@@ -64,14 +61,22 @@ impl RemoteExecutor {
     }
 
     /// Sends `builder` and deserializes a successful JSON response body.
-    async fn send_json<T: DeserializeOwned>(&self, builder: reqwest::RequestBuilder) -> FsResult<T> {
+    async fn send_json<T: DeserializeOwned>(
+        &self,
+        builder: reqwest::RequestBuilder,
+    ) -> FsResult<T> {
         let response = self.send_checked(builder).await?;
         response.json::<T>().await.map_err(map_reqwest_err)
     }
 
     /// Issues a `stat` call directly. Used both for `Command::Stat` and as
     /// the extra round trip `Command::Read` needs to recover `Revision`.
-    async fn stat(&self, ctx: &RequestContext, path: &VirtualPath, follow_symlinks: bool) -> FsResult<Node> {
+    async fn stat(
+        &self,
+        ctx: &RequestContext,
+        path: &VirtualPath,
+        follow_symlinks: bool,
+    ) -> FsResult<Node> {
         let builder = self
             .client
             .get(self.url(ctx.workspace_id, &format!("/fs{}", path.as_str())))
@@ -182,24 +187,24 @@ impl Executor for RemoteExecutor {
             )),
 
             Command::Exists { path, options } => {
-                let response = self
-                    .client
-                    .head(self.url(ctx.workspace_id, &format!("/fs{}", path.as_str())))
-                    .query(&[("follow_symlinks", options.follow_symlinks.to_string())])
-                    .bearer_auth(&self.token)
-                    .send()
-                    .await
-                    .map_err(map_reqwest_err)?;
-                match response.status() {
-                    StatusCode::NOT_FOUND => Ok(CommandOutput::Exists(false)),
-                    status if status.is_success() => Ok(CommandOutput::Exists(true)),
-                    // HEAD responses carry no body, so there is no JSON
-                    // error envelope to parse here (unlike every other
-                    // arm); this constructs a generic error from the status
-                    // code alone.
-                    status => Err(FsError::internal_storage_failure(format!(
-                        "exists check failed with status {status}"
-                    ))),
+                // Reuses `Self::stat`'s real GET request (which returns a
+                // full JSON error envelope on failure) rather than issuing a
+                // bodyless HEAD request. A HEAD response never carries a
+                // body, so a non-2xx/non-404 status previously had no error
+                // envelope to parse and fell back to a generic
+                // `InternalStorageFailure` — flattening every real domain
+                // error (e.g. a broken symlink's `ErrorCode::BrokenLink`)
+                // into the same code, unlike `LocalExecutor`'s `fs.exists`
+                // (which itself calls `stat` and only maps `NotFound`
+                // specifically to `false`, propagating every other error —
+                // see `fslite-sqlite`'s `directory::exists`). Mirroring that
+                // exact mapping here keeps the two executors in agreement.
+                match self.stat(ctx, &path, options.follow_symlinks).await {
+                    Ok(_) => Ok(CommandOutput::Exists(true)),
+                    Err(err) if err.code() == ErrorCode::NotFound => {
+                        Ok(CommandOutput::Exists(false))
+                    }
+                    Err(err) => Err(err),
                 }
             }
 
@@ -270,10 +275,9 @@ impl Executor for RemoteExecutor {
                     ));
                 }
                 let node = self.stat(ctx, &path, true).await?;
-                let mut builder = self.client.get(self.url(
-                    ctx.workspace_id,
-                    &format!("/content{}", path.as_str()),
-                ));
+                let mut builder = self
+                    .client
+                    .get(self.url(ctx.workspace_id, &format!("/content{}", path.as_str())));
                 if let Some(range) = options.range {
                     builder = builder.header(
                         reqwest::header::RANGE,

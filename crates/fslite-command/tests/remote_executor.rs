@@ -3,8 +3,8 @@ use std::sync::Arc;
 use base64::Engine;
 use fslite_command::{Command, CommandOutput, Executor, LocalExecutor, RemoteExecutor};
 use fslite_core::{
-    BatchOperation, ByteRange, CopyOptions, ErrorCode, FindQuery, MoveOptions, MutationOptions,
-    ReadOptions, RequestContext, VirtualPath, WriteOptions,
+    BatchOperation, ByteRange, CopyOptions, CreateOptions, ErrorCode, FindQuery, LinkTarget,
+    MoveOptions, MutationOptions, ReadOptions, RequestContext, VirtualPath, WriteOptions,
 };
 use fslite_server::{AppState, AuthenticatedActor, BearerTokenAuthProvider, SqliteWorkspaceAdmin};
 use fslite_sqlite::SqliteFileSystem;
@@ -21,7 +21,10 @@ async fn dual_fixture() -> (RemoteExecutor, LocalExecutor, RequestContext) {
             .await
             .unwrap(),
     );
-    let workspace = sqlite_fs.create_workspace(Default::default()).await.unwrap();
+    let workspace = sqlite_fs
+        .create_workspace(Default::default())
+        .await
+        .unwrap();
     let ctx = RequestContext::trusted(workspace.id);
 
     let mut tokens = std::collections::HashMap::new();
@@ -44,7 +47,9 @@ async fn dual_fixture() -> (RemoteExecutor, LocalExecutor, RequestContext) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
-        axum::serve(listener, fslite_server::app(state)).await.unwrap();
+        axum::serve(listener, fslite_server::app(state))
+            .await
+            .unwrap();
     });
 
     let remote = RemoteExecutor::new(format!("http://{addr}"), TOKEN);
@@ -93,7 +98,10 @@ async fn remote_and_local_executors_agree_on_a_command_battery() {
                 assert!(local_result.is_ok());
                 match (&remote_result, local_result.unwrap()) {
                     (CommandOutput::Node(r), CommandOutput::Node(l)) => assert_eq!(r.name, l.name),
-                    (CommandOutput::Content { bytes: rb, .. }, CommandOutput::Content { bytes: lb, .. }) => {
+                    (
+                        CommandOutput::Content { bytes: rb, .. },
+                        CommandOutput::Content { bytes: lb, .. },
+                    ) => {
                         assert_eq!(rb, &lb)
                     }
                     (CommandOutput::Nodes(r), CommandOutput::Nodes(l)) => {
@@ -147,6 +155,66 @@ async fn remote_exists_reports_true_and_false() {
         .await
         .unwrap();
     assert_eq!(missing, CommandOutput::Exists(false));
+}
+
+/// Regression test: `RemoteExecutor`'s `Exists` arm used to issue a bodyless
+/// HTTP `HEAD` request, so any non-2xx/non-404 response had no JSON error
+/// envelope to parse and fell back to a generic
+/// `ErrorCode::InternalStorageFailure` — flattening every real domain error
+/// (not just "not found") into the same code. A broken symlink is exactly
+/// such a case: resolving it with `follow_symlinks: true` (the default)
+/// fails with `ErrorCode::BrokenLink`, not `NotFound`. This proves
+/// `RemoteExecutor::Exists` now reports the *same* error code as
+/// `LocalExecutor::Exists` for that condition, by reusing the `stat`
+/// round trip (which does return a full JSON error envelope) instead of a
+/// bare `HEAD`.
+#[tokio::test]
+async fn remote_exists_matches_local_error_code_for_a_broken_symlink() {
+    let (remote, local, ctx) = dual_fixture().await;
+    let link = VirtualPath::parse("/broken-link").unwrap();
+    let target = LinkTarget::parse("/nonexistent-target.txt").unwrap();
+
+    remote
+        .execute(
+            &ctx,
+            Command::Symlink {
+                target,
+                link: link.clone(),
+                options: CreateOptions::default(),
+            },
+        )
+        .await
+        .unwrap();
+
+    let local_err = local
+        .execute(
+            &ctx,
+            Command::Exists {
+                path: link.clone(),
+                options: Default::default(),
+            },
+        )
+        .await
+        .expect_err("a broken symlink must fail to resolve, not silently report false");
+    assert_eq!(local_err.code(), ErrorCode::BrokenLink);
+
+    let remote_err = remote
+        .execute(
+            &ctx,
+            Command::Exists {
+                path: link,
+                options: Default::default(),
+            },
+        )
+        .await
+        .expect_err("RemoteExecutor must surface an error here too, not Ok(Exists(_))");
+    assert_eq!(
+        remote_err.code(),
+        local_err.code(),
+        "RemoteExecutor::Exists diverged from LocalExecutor's error code for a broken symlink \
+         (this was ErrorCode::InternalStorageFailure before the fix, from the bodyless HEAD \
+         request having no JSON error envelope to parse)"
+    );
 }
 
 /// Exercises `Copy` and `Move` entirely over HTTP, then confirms the
@@ -298,7 +366,12 @@ async fn remote_trash_and_restore_round_trip() {
     assert_eq!(gone, CommandOutput::Exists(false));
 
     let listing = remote
-        .execute(&ctx, Command::ListTrash { page: Default::default() })
+        .execute(
+            &ctx,
+            Command::ListTrash {
+                page: Default::default(),
+            },
+        )
         .await
         .unwrap();
     match listing {
@@ -393,7 +466,10 @@ async fn remote_and_local_set_attribute_agree_on_the_wire_encoding() {
         remote_node.attributes.get("owner"),
         local_node.attributes.get("owner"),
     );
-    let owner_value = remote_node.attributes.get("owner").expect("attribute present");
+    let owner_value = remote_node
+        .attributes
+        .get("owner")
+        .expect("attribute present");
     // `fslite-sqlite` stores attribute values URL-safe-base64 encoded
     // internally, independent of the HTTP wire encoding `RemoteExecutor`
     // used to transmit the raw bytes.
