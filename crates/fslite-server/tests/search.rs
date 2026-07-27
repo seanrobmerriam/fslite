@@ -38,6 +38,9 @@ async fn find_accepts_the_core_query_shape_directly() {
     let (state, workspace_id) = support::fixture().await;
     let ctx = RequestContext::trusted(workspace_id);
     state.fs.write(&ctx, &VirtualPath::parse("/a.txt").unwrap(), WriteSource::from_bytes(b"x".to_vec()), Default::default()).await.unwrap();
+    // A non-matching sibling proves `name_contains` is actually applied by
+    // the handler, rather than the endpoint just echoing back every node.
+    state.fs.write(&ctx, &VirtualPath::parse("/zzz.txt").unwrap(), WriteSource::from_bytes(b"y".to_vec()), Default::default()).await.unwrap();
 
     let response = app(state)
         .oneshot(
@@ -51,6 +54,10 @@ async fn find_accepts_the_core_query_shape_directly() {
         .await
         .unwrap();
     assert_eq!(response.status(), 200);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let page: fslite_core::Page<fslite_core::Node> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].name, "a.txt");
 }
 
 #[tokio::test]
