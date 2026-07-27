@@ -7,7 +7,7 @@ multi-workspace SQLite implementation suitable for direct embedding.
 
 | Crate | Purpose |
 | --- | --- |
-| [`fslite-core`](crates/fslite-core) | The canonical `FileSystem` trait, domain types (`VirtualPath`, `Node`, `Revision`, ...), and stable typed errors. Transport-independent: no SQL, no HTTP, no host filesystem paths. |
+| [`fslite-core`](crates/fslite-core) | The `FileSystem` trait, domain types (`VirtualPath`, `Node`, `Revision`, ...), and stable typed errors. Transport-independent: no SQL, no HTTP, no host filesystem paths.
 | [`fslite-sqlite`](crates/fslite-sqlite) | `SqliteFileSystem`: a `FileSystem` implementation backed by one SQLite database that can hold many isolated workspaces. |
 | [`fslite-conformance`](crates/fslite-conformance) | A backend-agnostic contract test suite. Any `FileSystem` implementation can prove basic compliance by implementing `ConformanceFactory` and calling `run_conformance`. |
 
@@ -77,7 +77,7 @@ quotas are configurable via `WorkspaceOptions` at `create_workspace` time.
   shared transaction, using each operation's internal transaction-level
   logic directly (never by recursively opening another connection call,
   which would deadlock against the single dedicated connection thread). The
-  first failing operation aborts the whole batch — nothing commits — and
+  first failing operation aborts the whole batch: nothing commits, and
   the returned error's safe details include `{"index": N}` identifying
   which operation failed.
 - Mutations accept an optional expected revision (`expected_revision`) and
