@@ -5,6 +5,7 @@ members = [
   "crates/fslite-sqlite",
   "crates/fslite-conformance",
   "crates/fslite-server",
+  "crates/fslite-command",
 ]
 
 [workspace.package]
@@ -17,9 +18,11 @@ async-trait = "0.1"
 axum = "0.8"
 base64 = "0.22"
 bytes = "1"
+clap = { version = "4", features = ["derive"] }
 futures = "0.3"
 http-body-util = "0.1"
 proptest = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -1,0 +1,20 @@
+[package]
+name = "fslite-command"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+base64.workspace = true
+bytes.workspace = true
+fslite-core = { path = "../fslite-core" }
+futures.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+fslite-sqlite = { path = "../fslite-sqlite" }
+tokio = { workspace = true, features = ["full"] }
