@@ -174,7 +174,7 @@ async fn run_line(executor: &dyn Executor, ctx: &RequestContext, line: &str, jso
         Err(err) => {
             eprintln!(
                 "error: {} ({:?})",
-                fslite_command::render::sanitize_for_terminal(err.message()),
+                fslite_command::render::sanitize_name(err.message()),
                 err.code()
             );
             std::process::exit(1);
@@ -210,7 +210,7 @@ async fn run_repl(executor: &dyn Executor, ctx: &RequestContext, json: bool) {
                 Ok(output) => print_output(&output, json),
                 Err(err) => eprintln!(
                     "error: {} ({:?})",
-                    fslite_command::render::sanitize_for_terminal(err.message()),
+                    fslite_command::render::sanitize_name(err.message()),
                     err.code()
                 ),
             },

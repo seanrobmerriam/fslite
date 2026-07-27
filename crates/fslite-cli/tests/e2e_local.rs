@@ -296,3 +296,75 @@ fn help_does_not_print_the_fslite_token_value() {
         "expected --help to still document the --token flag and its env var, got: {stdout}"
     );
 }
+
+/// Regression test for the newline half of the terminal-injection finding
+/// left standing after the ESC-byte fix
+/// (`one_shot_mode_never_writes_a_raw_escape_byte_to_stderr_on_error`,
+/// above): a node name/path can legally contain a raw `\n`, and
+/// `sanitize_for_terminal` — used at the time by `run_line`'s error
+/// printer — preserves `\n` by design (it's meant for free-text fields
+/// like search previews, not structured fields like paths). A hostile path
+/// containing `\n` followed by fake error-looking text therefore forged a
+/// second, fake stderr line that looked like an unrelated message. This
+/// creates a node with such a name, triggers a real domain error against
+/// it (a duplicate `mkdir`, same shape as the ESC-byte test), and asserts
+/// the CLI's real stderr is exactly one line — the real error — not two.
+#[test]
+fn one_shot_mode_does_not_forge_an_extra_stderr_line_from_a_newline_in_an_error_message() {
+    let db = tempfile::NamedTempFile::new().unwrap();
+    let db_path = db.path().to_str().unwrap();
+    let create = cli()
+        .args(["--db", db_path, "--create-workspace"])
+        .output()
+        .unwrap();
+    assert!(create.status.success());
+    let workspace_id = String::from_utf8(create.stdout).unwrap().trim().to_string();
+
+    let hostile_path =
+        "/evil\nerror: workspace quota exceeded, contact admin (InternalStorageFailure).txt";
+
+    let first = cli()
+        .args([
+            "--db",
+            db_path,
+            "--workspace",
+            &workspace_id,
+            "mkdir",
+            hostile_path,
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        first.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    // A second `mkdir` of the same path fails with `AlreadyExists`, whose
+    // `FsError` message embeds the raw hostile path text, newline included.
+    let second = cli()
+        .args([
+            "--db",
+            db_path,
+            "--workspace",
+            &workspace_id,
+            "mkdir",
+            hostile_path,
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        !second.status.success(),
+        "expected the duplicate mkdir to fail"
+    );
+    let stderr_text = String::from_utf8_lossy(&second.stderr);
+    assert_eq!(
+        stderr_text.lines().count(),
+        1,
+        "expected exactly one stderr line (no forged extra line), got: {stderr_text}"
+    );
+    assert!(
+        stderr_text.contains("evil") && stderr_text.contains("quota exceeded"),
+        "expected the sanitized message to retain the benign surrounding text, got: {stderr_text}"
+    );
+}
