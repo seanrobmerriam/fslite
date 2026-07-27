@@ -10,6 +10,7 @@ use crate::state::AppState;
 
 pub mod directories;
 pub mod nodes;
+pub mod trash;
 
 pub fn health_router() -> Router<AppState> {
     Router::new()

@@ -23,6 +23,7 @@ pub fn app(state: AppState) -> Router {
         .merge(routes::health_router())
         .merge(routes::nodes::router())
         .merge(routes::directories::router())
+        .merge(routes::trash::router())
         .with_state(state)
         .layer(middleware::from_fn(tracing_mw::request_id))
         .layer(tracing_mw::trace_layer())
