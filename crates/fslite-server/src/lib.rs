@@ -2,6 +2,7 @@
 
 mod admin;
 mod auth;
+mod dto;
 mod error;
 mod routes;
 mod state;
@@ -20,6 +21,7 @@ pub use tracing_mw::RequestId;
 pub fn app(state: AppState) -> Router {
     Router::new()
         .merge(routes::health_router())
+        .merge(routes::nodes::router())
         .with_state(state)
         .layer(middleware::from_fn(tracing_mw::request_id))
         .layer(tracing_mw::trace_layer())

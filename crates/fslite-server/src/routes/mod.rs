@@ -8,6 +8,8 @@ use serde_json::json;
 use crate::error::ApiError;
 use crate::state::AppState;
 
+pub mod nodes;
+
 pub fn health_router() -> Router<AppState> {
     Router::new()
         .route("/healthz", get(healthz))

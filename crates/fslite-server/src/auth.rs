@@ -79,8 +79,18 @@ where
         let app_state = AppState::from_ref(state);
         let actor = app_state.auth.authenticate(&parts.headers).await?;
 
-        let Path(workspace_id) = Path::<WorkspaceId>::from_request_parts(parts, state)
+        // `Path<WorkspaceId>` only deserializes cleanly when the matched
+        // route has exactly one captured segment. Routes nested under
+        // `/fs/{*path}` also capture the wildcard tail, so we read the raw
+        // param map instead and parse the `workspace_id` entry by name —
+        // this works regardless of how many other segments the route captures.
+        let Path(raw_params) = Path::<HashMap<String, String>>::from_request_parts(parts, state)
             .await
+            .map_err(|_| ApiError::MalformedBody("invalid path parameters".into()))?;
+        let raw_workspace_id = raw_params
+            .get("workspace_id")
+            .ok_or_else(|| ApiError::MalformedBody("missing workspace id in path".into()))?;
+        let workspace_id = WorkspaceId::parse(raw_workspace_id)
             .map_err(|_| ApiError::MalformedBody("invalid workspace id in path".into()))?;
 
         if actor.workspace_id != workspace_id {
