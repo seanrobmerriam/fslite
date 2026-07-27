@@ -104,3 +104,54 @@ async fn cli_remote_mode_matches_local_mode_behavior() {
         "hello over http"
     );
 }
+
+/// Regression test: `--token` on argv is world-readable via
+/// `/proc/<pid>/cmdline` on Linux for the process's lifetime and lands in
+/// shell history. `FSLITE_TOKEN` must work as an equivalent, so the token
+/// never has to appear on argv at all. This runs the CLI with no `--token`
+/// flag present, supplying the token only via the environment.
+#[tokio::test(flavor = "multi_thread")]
+async fn token_can_be_supplied_via_fslite_token_env_var_instead_of_argv() {
+    let (base_url, workspace_id) = spawn_server().await;
+
+    let write = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+        .env("FSLITE_TOKEN", TOKEN)
+        .args([
+            "--server",
+            &base_url,
+            "--workspace",
+            &workspace_id.to_string(),
+            "write",
+            "/a.txt",
+            "--text=hello from env token",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        write.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&write.stderr)
+    );
+
+    let cat = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+        .env("FSLITE_TOKEN", TOKEN)
+        .args([
+            "--server",
+            &base_url,
+            "--workspace",
+            &workspace_id.to_string(),
+            "cat",
+            "/a.txt",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        cat.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&cat.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(cat.stdout).unwrap().trim(),
+        "hello from env token"
+    );
+}

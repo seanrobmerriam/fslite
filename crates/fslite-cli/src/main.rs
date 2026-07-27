@@ -28,8 +28,11 @@ struct Cli {
     #[arg(long, conflicts_with_all = ["db", "memory"])]
     server: Option<String>,
 
-    /// Bearer token for remote mode.
-    #[arg(long, requires = "server")]
+    /// Bearer token for remote mode. Prefer `FSLITE_TOKEN` over this flag:
+    /// on Linux, argv (and therefore a flag value) is world-readable via
+    /// `/proc/<pid>/cmdline` for the process's lifetime and also lands in
+    /// shell history, while an environment variable does not.
+    #[arg(long, env = "FSLITE_TOKEN", requires = "server")]
     token: Option<String>,
 
     /// Creates a new workspace, prints its id, and exits.
