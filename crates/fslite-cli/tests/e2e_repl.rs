@@ -84,6 +84,75 @@ fn repl_mode_never_writes_a_raw_escape_byte_to_stderr_on_error() {
     );
 }
 
+/// Regression test for the finding raised in the whole-branch review of the
+/// "CLI Residual Hardening" plan: Task 2's scope note claimed a
+/// REPL-stdin-typed reproduction of the newline-forging bug was
+/// "structurally impossible" because `std::io::BufRead::lines()` splits
+/// strictly on a raw `\n` byte before `main.rs` ever sees a line. That's
+/// true as far as it goes, but incomplete — `fslite-command`'s lexer
+/// translates the two-*character* escape sequence `\n` (backslash, then the
+/// letter `n`) inside a double-quoted segment into an actual newline
+/// *character* in the parsed string (see `read_double_quoted` in
+/// `crates/fslite-command/src/lexer.rs`). A REPL user can therefore
+/// construct a `Command` whose path contains a real newline entirely
+/// through a normal, newline-free line of stdin input, by double-quoting a
+/// path containing a literal `\n` escape sequence (single-quoted segments
+/// do not get this translation — `read_single_quoted` copies bytes
+/// verbatim). This creates a node with such a name, triggers a real domain
+/// error against it (a duplicate `mkdir`, same shape as the ESC-byte test
+/// above), and asserts the REPL's real captured stderr is exactly one
+/// line — the real error — not two (which is what the forged-row bug
+/// would have produced).
+#[test]
+fn repl_mode_does_not_forge_an_extra_stderr_line_from_a_lexer_escaped_newline() {
+    let db = tempfile::NamedTempFile::new().unwrap();
+    let db_path = db.path().to_str().unwrap();
+    let create = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+        .args(["--db", db_path, "--create-workspace"])
+        .output()
+        .unwrap();
+    let workspace_id = String::from_utf8(create.stdout).unwrap().trim().to_string();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+        .args(["--db", db_path, "--workspace", &workspace_id, "--repl"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        // Double-quoted, so the lexer's `\n` escape-sequence translation
+        // fires: this line of stdin contains no raw newline byte, yet the
+        // parsed path ends up with a real newline character in it.
+        writeln!(
+            stdin,
+            r#"mkdir "/evil\nerror: quota exceeded (InternalStorageFailure).txt""#
+        )
+        .unwrap();
+        writeln!(
+            stdin,
+            r#"mkdir "/evil\nerror: quota exceeded (InternalStorageFailure).txt""#
+        )
+        .unwrap();
+        writeln!(stdin, "exit").unwrap();
+    }
+
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    let stderr_text = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr_text.lines().count(),
+        1,
+        "expected exactly one stderr line (no forged extra line), got: {stderr_text}"
+    );
+    assert!(
+        stderr_text.contains("evil") && stderr_text.contains("quota exceeded"),
+        "expected the sanitized message to retain the benign surrounding text, got: {stderr_text}"
+    );
+}
+
 #[test]
 fn repl_mode_reports_parse_errors_on_stderr_without_exiting() {
     let db = tempfile::NamedTempFile::new().unwrap();
