@@ -8,17 +8,29 @@ use axum::{Json, Router};
 use fslite_core::{ChangeCursor, FindQuery, Page, PageRequest};
 use serde::Deserialize;
 
-use crate::dto::{query_u32, ContentQueryRequest, SearchMatchDto};
+use crate::Ctx;
+use crate::dto::{ContentQueryRequest, SearchMatchDto, query_u32};
 use crate::error::ApiError;
 use crate::state::AppState;
-use crate::Ctx;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/v1/workspaces/{workspace_id}/search/glob", get(glob))
-        .route("/v1/workspaces/{workspace_id}/search/find", post(find))
-        .route("/v1/workspaces/{workspace_id}/search/content", post(search_content))
-        .route("/v1/workspaces/{workspace_id}/changes", get(changes))
+        .route(
+            "/v1/workspaces/{workspace_id}/search/glob",
+            get(glob).fallback(super::method_not_allowed),
+        )
+        .route(
+            "/v1/workspaces/{workspace_id}/search/find",
+            post(find).fallback(super::method_not_allowed),
+        )
+        .route(
+            "/v1/workspaces/{workspace_id}/search/content",
+            post(search_content).fallback(super::method_not_allowed),
+        )
+        .route(
+            "/v1/workspaces/{workspace_id}/changes",
+            get(changes).fallback(super::method_not_allowed),
+        )
 }
 
 fn page_request(params: &HashMap<String, String>) -> Result<PageRequest, ApiError> {
@@ -77,7 +89,8 @@ where
 {
     let mut value = serde_json::Value::deserialize(deserializer)?;
     if let serde_json::Value::Object(map) = &mut value {
-        let default = serde_json::to_value(FindQuery::default()).map_err(serde::de::Error::custom)?;
+        let default =
+            serde_json::to_value(FindQuery::default()).map_err(serde::de::Error::custom)?;
         if let serde_json::Value::Object(default_map) = default {
             for (key, default_value) in default_map {
                 map.entry(key).or_insert(default_value);
@@ -98,9 +111,13 @@ struct FindRequest {
 async fn find(
     State(state): State<AppState>,
     Ctx(ctx): Ctx,
-    Json(body): Json<FindRequest>,
+    body: axum::body::Bytes,
 ) -> Result<Json<Page<fslite_core::Node>>, ApiError> {
-    Ok(Json(state.fs.find(&ctx, body.query, body.page.into()).await?))
+    let body: FindRequest =
+        serde_json::from_slice(&body).map_err(|e| ApiError::MalformedBody(e.to_string()))?;
+    Ok(Json(
+        state.fs.find(&ctx, body.query, body.page.into()).await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -114,10 +131,15 @@ struct SearchContentRequest {
 async fn search_content(
     State(state): State<AppState>,
     Ctx(ctx): Ctx,
-    Json(body): Json<SearchContentRequest>,
+    body: axum::body::Bytes,
 ) -> Result<Json<Page<SearchMatchDto>>, ApiError> {
+    let body: SearchContentRequest =
+        serde_json::from_slice(&body).map_err(|e| ApiError::MalformedBody(e.to_string()))?;
     let query: fslite_core::ContentQuery = body.query.try_into()?;
-    let page = state.fs.search_content(&ctx, query, body.page.into()).await?;
+    let page = state
+        .fs
+        .search_content(&ctx, query, body.page.into())
+        .await?;
     Ok(Json(Page::new(
         page.items.into_iter().map(SearchMatchDto::from).collect(),
         page.next_cursor,
@@ -129,7 +151,9 @@ async fn changes(
     Ctx(ctx): Ctx,
     Query(params): Query<HashMap<String, String>>,
 ) -> Result<Json<Page<fslite_core::Change>>, ApiError> {
-    let after = params.get("after").map(|raw| ChangeCursor::new(raw.clone()));
+    let after = params
+        .get("after")
+        .map(|raw| ChangeCursor::new(raw.clone()));
     let page = page_request(&params)?;
     Ok(Json(state.fs.changes(&ctx, after, page).await?))
 }

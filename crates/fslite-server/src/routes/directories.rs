@@ -14,15 +14,15 @@ use axum::routing::get;
 use axum::{Json, Router};
 use fslite_core::{Page, PageRequest, TreeEntry, TreeOptions, WorkspaceId};
 
+use crate::Ctx;
 use crate::dto::{query_bool, query_u32};
 use crate::error::ApiError;
 use crate::state::AppState;
-use crate::Ctx;
 
 pub fn router() -> Router<AppState> {
     Router::new().route(
         "/v1/workspaces/{workspace_id}/directories/{*path}",
-        get(dispatch),
+        get(dispatch).fallback(super::method_not_allowed),
     )
 }
 
@@ -77,10 +77,9 @@ async fn tree(
     let page = page_request(&params)?;
     let max_depth = match params.get("max_depth") {
         None => None,
-        Some(v) => Some(
-            v.parse::<u32>()
-                .map_err(|_| ApiError::MalformedBody("max_depth must be a non-negative integer".into()))?,
-        ),
+        Some(v) => Some(v.parse::<u32>().map_err(|_| {
+            ApiError::MalformedBody("max_depth must be a non-negative integer".into())
+        })?),
     };
     let follow_symlinks = query_bool(&params, "follow_symlinks", false)?;
     let options = TreeOptions::default()

@@ -14,18 +14,24 @@ use axum::{Json, Router};
 use fslite_core::WorkspaceId;
 use serde::Serialize;
 
+use crate::Ctx;
 use crate::error::ApiError;
 use crate::state::AppState;
-use crate::Ctx;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/v1/workspaces", axum::routing::post(create_workspace))
+        .route(
+            "/v1/workspaces",
+            axum::routing::post(create_workspace).fallback(crate::routes::method_not_allowed),
+        )
         .route(
             "/v1/workspaces/{workspace_id}",
-            axum::routing::delete(delete_workspace),
+            axum::routing::delete(delete_workspace).fallback(crate::routes::method_not_allowed),
         )
-        .route("/v1/workspaces/{workspace_id}/usage", get(usage))
+        .route(
+            "/v1/workspaces/{workspace_id}/usage",
+            get(usage).fallback(crate::routes::method_not_allowed),
+        )
 }
 
 /// The wire shape of a created workspace: `fslite_sqlite::Workspace` does not
@@ -44,8 +50,13 @@ async fn create_workspace(
     headers: axum::http::HeaderMap,
 ) -> Result<Json<WorkspaceDto>, ApiError> {
     let actor = state.auth.authenticate(&headers).await?;
-    if !actor.capabilities.contains(&fslite_core::Capability::WorkspaceAdmin) {
-        return Err(ApiError::Domain(fslite_core::FsError::permission_denied("create_workspace")));
+    if !actor
+        .capabilities
+        .contains(&fslite_core::Capability::WorkspaceAdmin)
+    {
+        return Err(ApiError::Domain(fslite_core::FsError::permission_denied(
+            "create_workspace",
+        )));
     }
     let workspace = state.admin.create_workspace().await?;
     Ok(Json(WorkspaceDto {
@@ -63,7 +74,11 @@ async fn delete_workspace(
     headers: axum::http::HeaderMap,
 ) -> Result<StatusCode, ApiError> {
     let actor = state.auth.authenticate(&headers).await?;
-    if actor.workspace_id != workspace_id || !actor.capabilities.contains(&fslite_core::Capability::WorkspaceAdmin) {
+    if actor.workspace_id != workspace_id
+        || !actor
+            .capabilities
+            .contains(&fslite_core::Capability::WorkspaceAdmin)
+    {
         return Err(ApiError::WorkspaceMismatch);
     }
     state.admin.delete_workspace(workspace_id).await?;

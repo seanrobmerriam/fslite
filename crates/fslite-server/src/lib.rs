@@ -9,8 +9,8 @@ mod routes;
 mod state;
 mod tracing_mw;
 
-use axum::middleware;
 use axum::Router;
+use axum::middleware;
 
 pub use admin::{SqliteWorkspaceAdmin, WorkspaceAdmin};
 pub use auth::{AuthProvider, AuthenticatedActor, BearerTokenAuthProvider, Ctx};
@@ -29,6 +29,7 @@ pub fn app(state: AppState) -> Router {
         .merge(routes::search::router())
         .merge(routes::batch::router())
         .merge(routes::workspaces::router())
+        .fallback(|| async { ApiError::RouteNotFound })
         .with_state(state)
         .layer(middleware::from_fn(tracing_mw::request_id))
         .layer(tracing_mw::trace_layer())

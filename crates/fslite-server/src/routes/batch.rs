@@ -7,12 +7,15 @@ use fslite_core::{
 };
 use serde::Deserialize;
 
+use crate::Ctx;
 use crate::error::ApiError;
 use crate::state::AppState;
-use crate::Ctx;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/v1/workspaces/{workspace_id}/batch", post(batch))
+    Router::new().route(
+        "/v1/workspaces/{workspace_id}/batch",
+        post(batch).fallback(super::method_not_allowed),
+    )
 }
 
 /// Returns the serialized default for the `options` object a given
@@ -85,8 +88,10 @@ struct BatchRequest {
 async fn batch(
     State(state): State<AppState>,
     Ctx(ctx): Ctx,
-    Json(body): Json<BatchRequest>,
+    body: axum::body::Bytes,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    let body: BatchRequest =
+        serde_json::from_slice(&body).map_err(|e| ApiError::MalformedBody(e.to_string()))?;
     let results = state.fs.batch(&ctx, body.operations).await?;
     Ok(Json(serde_json::json!({ "results": results })))
 }

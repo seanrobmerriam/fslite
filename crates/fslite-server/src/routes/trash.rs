@@ -9,21 +9,24 @@ use axum::{Json, Router};
 use fslite_core::{PageRequest, TrashId, VirtualPath, WorkspaceId};
 use serde::Deserialize;
 
+use crate::Ctx;
 use crate::dto::query_u32;
 use crate::error::ApiError;
 use crate::state::AppState;
-use crate::Ctx;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/v1/workspaces/{workspace_id}/trash", get(list_trash))
+        .route(
+            "/v1/workspaces/{workspace_id}/trash",
+            get(list_trash).fallback(super::method_not_allowed),
+        )
         .route(
             "/v1/workspaces/{workspace_id}/trash/{trash_id}",
-            axum::routing::delete(purge),
+            axum::routing::delete(purge).fallback(super::method_not_allowed),
         )
         .route(
             "/v1/workspaces/{workspace_id}/trash/{trash_id}/restore",
-            axum::routing::post(restore),
+            axum::routing::post(restore).fallback(super::method_not_allowed),
         )
 }
 
@@ -34,7 +37,11 @@ async fn list_trash(
 ) -> Result<Json<fslite_core::Page<fslite_core::TrashEntry>>, ApiError> {
     let page = PageRequest::default()
         .cursor(params.get("cursor").cloned())
-        .limit(query_u32(&params, "limit", fslite_core::DEFAULT_PAGE_LIMIT)?);
+        .limit(query_u32(
+            &params,
+            "limit",
+            fslite_core::DEFAULT_PAGE_LIMIT,
+        )?);
     Ok(Json(state.fs.list_trash(&ctx, page).await?))
 }
 
@@ -66,7 +73,10 @@ async fn restore(
 ) -> Result<Json<fslite_core::Node>, ApiError> {
     let trash_id = parse_trash_id(&trash_id)?;
     let parsed: RestoreBody = if body.is_empty() {
-        RestoreBody { destination: None, expected_revision: None }
+        RestoreBody {
+            destination: None,
+            expected_revision: None,
+        }
     } else {
         serde_json::from_slice(&body).map_err(|e| ApiError::MalformedBody(e.to_string()))?
     };
@@ -77,7 +87,11 @@ async fn restore(
         .map_err(|e| ApiError::MalformedBody(e.message().to_string()))?;
     let expected_revision = match parsed.expected_revision {
         None => None,
-        Some(0) => return Err(ApiError::MalformedBody("expected_revision must be nonzero".into())),
+        Some(0) => {
+            return Err(ApiError::MalformedBody(
+                "expected_revision must be nonzero".into(),
+            ));
+        }
         Some(v) => fslite_core::Revision::new(v),
     };
     let options = fslite_core::MutationOptions::default().expected_revision(expected_revision);
