@@ -76,3 +76,10 @@ fn single_byte_range_is_satisfiable_at_the_last_offset() {
     assert_eq!(range.start, 99);
     assert_eq!(range.end, 100);
 }
+
+#[test]
+fn end_near_u64_max_clamps_instead_of_overflowing() {
+    let range = resolve_range("bytes=0-18446744073709551615", 100).unwrap();
+    assert_eq!(range.start, 0);
+    assert_eq!(range.end, 100);
+}

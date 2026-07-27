@@ -46,7 +46,7 @@ pub fn resolve_range(header: &str, logical_size: u64) -> Result<ByteRange, Range
         logical_size
     } else {
         let inclusive_end: u64 = end_str.parse().map_err(|_| RangeError::Malformed)?;
-        (inclusive_end + 1).min(logical_size)
+        inclusive_end.saturating_add(1).min(logical_size)
     };
 
     Ok(ByteRange::new(start, end))

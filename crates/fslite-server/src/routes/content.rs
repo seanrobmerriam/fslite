@@ -64,12 +64,7 @@ async fn read(
         .read(&ctx, &path, ReadOptions::default().range(range))
         .await?;
 
-    let content_range_header = format!(
-        "bytes {}-{}/{}",
-        file.range.start,
-        file.range.end.saturating_sub(1),
-        file.logical_length
-    );
+    let file_range = file.range;
     let logical_length = file.logical_length;
     let stream = file.into_stream();
     let body = Body::from_stream(stream);
@@ -82,6 +77,12 @@ async fn read(
     response.headers_mut().insert(axum::http::header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
     response.headers_mut().insert(axum::http::header::CONTENT_TYPE, HeaderValue::from_static("application/octet-stream"));
     if requested_range {
+        let content_range_header = format!(
+            "bytes {}-{}/{}",
+            file_range.start,
+            file_range.end.saturating_sub(1),
+            logical_length
+        );
         response
             .headers_mut()
             .insert(axum::http::header::CONTENT_RANGE, HeaderValue::from_str(&content_range_header).unwrap());

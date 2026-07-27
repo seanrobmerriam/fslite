@@ -38,6 +38,7 @@ async fn put_then_get_round_trips_bytes() {
     assert_eq!(get.status(), 200);
     assert_eq!(get.headers().get("accept-ranges").unwrap(), "bytes");
     assert_eq!(get.headers().get("content-length").unwrap(), "11");
+    assert!(get.headers().get("content-range").is_none());
     let body = get.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(&body[..], b"hello world");
 }
