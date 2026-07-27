@@ -1,19 +1,12 @@
-use fslite_server::{app, AppState};
-use fslite_core::WorkspaceId;
-use fslite_sqlite::SqliteFileSystem;
+mod support;
+
+use fslite_server::app;
 use http_body_util::BodyExt;
-use std::sync::Arc;
 use tower::ServiceExt;
 
 #[tokio::test]
 async fn healthz_returns_ok_without_touching_the_backend() {
-    let fs = SqliteFileSystem::open_in_memory(Default::default())
-        .await
-        .unwrap();
-    let state = AppState {
-        fs: Arc::new(fs),
-        health_workspace: WorkspaceId::new(),
-    };
+    let (state, _workspace_id) = support::fixture().await;
 
     let response = app(state)
         .oneshot(
