@@ -237,3 +237,15 @@ fn json_rendering_round_trips_every_variant_shape() {
         assert_eq!(parsed, output);
     }
 }
+
+/// Regression test: `sanitize_name` is `fslite-command`'s stricter, more
+/// generally-applicable sanitizer, but was missing from the crate-root
+/// re-export line in `lib.rs` — reachable only via the longer
+/// `fslite_command::render::sanitize_name` path, unlike its sibling
+/// `sanitize_for_terminal`. This is a compile-time proof: if the
+/// crate-root path doesn't resolve, this test fails to compile at all.
+#[test]
+fn sanitize_name_is_reachable_from_the_crate_root() {
+    let clean = fslite_command::sanitize_name("a\nb");
+    assert_eq!(clean, "ab");
+}
