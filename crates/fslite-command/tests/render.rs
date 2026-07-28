@@ -249,3 +249,31 @@ fn sanitize_name_is_reachable_from_the_crate_root() {
     let clean = fslite_command::sanitize_name("a\nb");
     assert_eq!(clean, "ab");
 }
+
+/// Regression test: search-match previews are free-text file content,
+/// where a literal newline can be legitimate — but printing it raw inside
+/// `"{path}: {preview}"` still let a hostile file forge a fake extra
+/// search-result row that looked like a real, unrelated match. Escaping
+/// the newline into a visible two-character `\n` sequence keeps the
+/// content visible without letting it masquerade as a row boundary.
+#[test]
+fn human_rendering_of_search_matches_does_not_forge_an_extra_row_from_a_newline_in_the_preview() {
+    let search_match = SearchMatch {
+        node: sample_node("ignored"),
+        path: VirtualPath::parse("/real.txt").unwrap(),
+        range: ByteRange::new(0, 5),
+        preview: b"needle\n/etc/shadow: root:x:0:0".to_vec(),
+    };
+    let output = CommandOutput::SearchMatches(Page::new(vec![search_match], None));
+    let rendered = render_human(&output);
+    let lines: Vec<&str> = rendered.lines().collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "rendered output had a forged extra line: {rendered:?}"
+    );
+    assert!(
+        rendered.contains("needle\\n/etc/shadow"),
+        "expected the embedded newline to survive as a visible escape sequence, got: {rendered:?}"
+    );
+}

@@ -17,4 +17,6 @@ pub use executor::Executor;
 pub use local::LocalExecutor;
 pub use output::CommandOutput;
 pub use remote::RemoteExecutor;
-pub use render::{render_human, render_json, sanitize_for_terminal, sanitize_name};
+pub use render::{
+    render_human, render_json, sanitize_for_terminal, sanitize_name, sanitize_preview,
+};

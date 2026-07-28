@@ -46,6 +46,24 @@ pub fn sanitize_name(raw: &str) -> String {
     raw.chars().filter(|ch| !ch.is_control()).collect()
 }
 
+/// [`sanitize_for_terminal`], with `\n`/`\t` then escaped into visible
+/// two-character sequences instead of passed through raw. Use this for
+/// free-text content rendered *inline* within a single table-shaped
+/// output row (currently only search-match previews): a real newline in
+/// the underlying file content stays visible to the user, but can never
+/// be mistaken for a row boundary the way a raw `\n` could.
+pub fn sanitize_preview(raw: &str) -> String {
+    let mut escaped = String::with_capacity(raw.len());
+    for ch in sanitize_for_terminal(raw).chars() {
+        match ch {
+            '\n' => escaped.push_str("\\n"),
+            '\t' => escaped.push_str("\\t"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
+}
+
 fn render_node_line(node: &Node) -> String {
     format!(
         "{:<10} {:>10} {}",
@@ -114,7 +132,7 @@ pub fn render_human(output: &CommandOutput) -> String {
                 format!(
                     "{}: {}",
                     sanitize_name(m.path.as_str()),
-                    sanitize_for_terminal(&String::from_utf8_lossy(&m.preview))
+                    sanitize_preview(&String::from_utf8_lossy(&m.preview))
                 )
             })
             .collect::<Vec<_>>()
