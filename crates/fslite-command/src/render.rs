@@ -20,7 +20,7 @@
 //! free-text fields where raw newlines can be legitimate content.
 //! [`sanitize_preview`] is a stricter tier: it wraps [`sanitize_for_terminal`]
 //! but further escapes `\n`/`\t` and the Unicode line/paragraph separators
-//! into visible two-character sequences, for free-text content rendered
+//! into visible escape sequences, for free-text content rendered
 //! *inline* within a single row (currently only search-match previews),
 //! keeping the content visible without letting it masquerade as a row
 //! boundary.
@@ -32,10 +32,17 @@ use crate::CommandOutput;
 /// Unicode bidirectional-control characters that can silently reorder how
 /// surrounding text *displays* without changing its underlying bytes —
 /// e.g. a name ending `\u{202E}gpj.exe` can display as if it ends `.jpg`
-/// reversed. `char::is_control()` does not catch these; they are Unicode
-/// general category Cf (format), not Cc (control).
+/// reversed. Covers the explicit embeddings/overrides (U+202A-U+202E), the
+/// isolates (U+2066-U+2069), and the weaker marks LRM/RLM/ALM (U+200E,
+/// U+200F, U+061C), which only flip the resolved direction of adjacent
+/// neutral characters (e.g. a filename's extension dot) rather than
+/// reversing a whole run. `char::is_control()` does not catch these; they
+/// are Unicode general category Cf (format), not Cc (control).
 fn is_bidi_override(ch: char) -> bool {
-    matches!(ch, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+    matches!(
+        ch,
+        '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{200E}' | '\u{200F}' | '\u{061C}'
+    )
 }
 
 /// Unicode line/paragraph separators that render as line breaks in many
@@ -88,8 +95,8 @@ pub fn sanitize_name(raw: &str) -> String {
 }
 
 /// [`sanitize_for_terminal`], with `\n`/`\t` and the Unicode line/paragraph
-/// separators (U+2028/U+2029) then escaped into visible two-character
-/// sequences instead of passed through raw. Use this for free-text content
+/// separators (U+2028/U+2029) then escaped into visible escape sequences
+/// instead of passed through raw. Use this for free-text content
 /// rendered *inline* within a single table-shaped output row (currently
 /// only search-match previews): a real newline (ASCII or Unicode) in the
 /// underlying file content stays visible to the user, but can never be

@@ -252,6 +252,16 @@ fn sanitize_name_is_reachable_from_the_crate_root() {
     assert_eq!(clean, "ab");
 }
 
+/// Regression test: `sanitize_preview` is on the same crate-root re-export
+/// line in `lib.rs` as `sanitize_name`, but had no equivalent compile-time
+/// guard proving it's reachable via `fslite_command::sanitize_preview` (not
+/// just `fslite_command::render::sanitize_preview`).
+#[test]
+fn sanitize_preview_is_reachable_from_the_crate_root() {
+    let escaped = fslite_command::sanitize_preview("a\nb");
+    assert_eq!(escaped, "a\\nb");
+}
+
 /// Regression test: search-match previews are free-text file content,
 /// where a literal newline can be legitimate — but printing it raw inside
 /// `"{path}: {preview}"` still let a hostile file forge a fake extra
@@ -294,6 +304,24 @@ fn sanitize_name_strips_bidi_override_characters() {
         "RLO character survived: {clean:?}"
     );
     assert!(clean.contains("harmless"));
+    assert_eq!(clean, "harmlessgpj.exe");
+}
+
+/// Regression test: LRM/RLM/ALM are weaker bidi marks than the explicit
+/// overrides/embeddings/isolates — they only flip the resolved direction of
+/// adjacent neutral characters (punctuation, digits, spaces) rather than
+/// reversing a whole run — but a filename's extension dot and digits are
+/// exactly such neutrals, so `is_bidi_override` must catch these too, not
+/// just RLO/LRO/isolates.
+#[test]
+fn sanitize_name_strips_bidi_marks_not_just_overrides() {
+    let hostile_name = "harmless\u{200E}file.txt";
+    let clean = sanitize_name(hostile_name);
+    assert!(
+        !clean.contains('\u{200E}'),
+        "LRM character survived: {clean:?}"
+    );
+    assert_eq!(clean, "harmlessfile.txt");
 }
 
 /// Regression test: the Unicode line/paragraph separators U+2028/U+2029
