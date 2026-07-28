@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use fslite_command::CommandOutput;
-use fslite_command::render::{render_human, render_json, sanitize_for_terminal, sanitize_name};
+use fslite_command::render::{
+    render_human, render_json, sanitize_for_terminal, sanitize_name, sanitize_preview,
+};
 use fslite_core::{
     ByteRange, Change, ChangeKind, LinkTarget, Node, NodeId, NodeKind, Page, Revision, SearchMatch,
     TrashEntry, TrashId, TreeEntry, VirtualPath, WorkspaceId,
@@ -276,4 +278,53 @@ fn human_rendering_of_search_matches_does_not_forge_an_extra_row_from_a_newline_
         rendered.contains("needle\\n/etc/shadow"),
         "expected the embedded newline to survive as a visible escape sequence, got: {rendered:?}"
     );
+}
+
+/// Regression test: a Unicode right-to-left-override character can make a
+/// name *display* with a spoofed extension (e.g. a name ending
+/// `\u{202E}gpj.exe` can render as if it ends `.jpg`) without changing the
+/// underlying bytes — `char::is_control()` doesn't catch it, since RLO is
+/// Unicode category Cf (format), not Cc (control).
+#[test]
+fn sanitize_name_strips_bidi_override_characters() {
+    let hostile_name = "harmless\u{202E}gpj.exe";
+    let clean = sanitize_name(hostile_name);
+    assert!(
+        !clean.contains('\u{202E}'),
+        "RLO character survived: {clean:?}"
+    );
+    assert!(clean.contains("harmless"));
+}
+
+/// Regression test: the Unicode line/paragraph separators U+2028/U+2029
+/// render as line breaks in many terminals — the same row-forging risk as
+/// `\n` — but aren't caught by `char::is_control()` (categories Zl/Zp, not
+/// Cc). `sanitize_name` must strip them like it strips `\n`.
+#[test]
+fn sanitize_name_strips_unicode_line_and_paragraph_separators() {
+    let hostile_name = "a.txt\u{2028}file 999 IMPORTANT.txt";
+    let clean = sanitize_name(hostile_name);
+    assert_eq!(clean, "a.txtfile 999 IMPORTANT.txt");
+}
+
+/// `sanitize_for_terminal` must strip bidi overrides (they're never
+/// legitimate in any context) while still preserving the Unicode
+/// line/paragraph separators for genuinely free-text content, exactly
+/// like it already preserves `\n`/`\t`.
+#[test]
+fn sanitize_for_terminal_strips_bidi_overrides_but_preserves_unicode_linebreaks() {
+    let input = "safe\u{202E}text\u{2028}more";
+    let clean = sanitize_for_terminal(input);
+    assert_eq!(clean, "safetext\u{2028}more");
+}
+
+/// `sanitize_preview` must escape the Unicode line separator into a
+/// visible sequence exactly like it already escapes `\n`, for the same
+/// row-forging reason.
+#[test]
+fn sanitize_preview_escapes_unicode_line_separator_too() {
+    let input = "needle\u{2028}more content";
+    let escaped = sanitize_preview(input);
+    assert!(!escaped.contains('\u{2028}'));
+    assert!(escaped.contains("needle\\u{2028}more"));
 }

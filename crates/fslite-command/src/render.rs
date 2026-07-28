@@ -7,28 +7,53 @@
 //! path segment is attacker-controlled input reaching a real terminal.
 //!
 //! Three sanitizers exist because `\n`/`\t` are not uniformly safe to keep:
-//! [`sanitize_name`] strips all control bytes (including `\n`/`\t`) and is
-//! used for *structured* fields (node names, paths, link targets) where a
-//! newline is never legitimate and would otherwise let an attacker forge
-//! extra rows in table-shaped output (e.g. a node named
-//! `a.txt\nfile 999 IMPORTANT.txt` injecting a fake `ls` row).
-//! [`sanitize_for_terminal`] preserves `\n`/`\t` but strips other control
-//! bytes — used for free-text fields where raw newlines can be legitimate
-//! content. [`sanitize_preview`] is a stricter tier: it wraps
-//! [`sanitize_for_terminal`] but further escapes `\n`/`\t` into visible
-//! two-character sequences, for free-text content rendered *inline* within
-//! a single row (currently only search-match previews), keeping the content
-//! visible without letting it masquerade as a row boundary.
+//! [`sanitize_name`] strips all control bytes (including `\n`/`\t`), Unicode
+//! bidirectional-override characters, and the Unicode line/paragraph
+//! separators, and is used for *structured* fields (node names, paths, link
+//! targets) where a newline is never legitimate and would otherwise let an
+//! attacker forge extra rows in table-shaped output (e.g. a node named
+//! `a.txt\nfile 999 IMPORTANT.txt` injecting a fake `ls` row), and where a
+//! bidi override could visually spoof the name (e.g. an extension made to
+//! *display* reversed). [`sanitize_for_terminal`] preserves `\n`/`\t` and
+//! the Unicode line/paragraph separators but strips other control bytes and
+//! bidi overrides (which are never legitimate in any context) — used for
+//! free-text fields where raw newlines can be legitimate content.
+//! [`sanitize_preview`] is a stricter tier: it wraps [`sanitize_for_terminal`]
+//! but further escapes `\n`/`\t` and the Unicode line/paragraph separators
+//! into visible two-character sequences, for free-text content rendered
+//! *inline* within a single row (currently only search-match previews),
+//! keeping the content visible without letting it masquerade as a row
+//! boundary.
 
 use fslite_core::Node;
 
 use crate::CommandOutput;
 
+/// Unicode bidirectional-control characters that can silently reorder how
+/// surrounding text *displays* without changing its underlying bytes —
+/// e.g. a name ending `\u{202E}gpj.exe` can display as if it ends `.jpg`
+/// reversed. `char::is_control()` does not catch these; they are Unicode
+/// general category Cf (format), not Cc (control).
+fn is_bidi_override(ch: char) -> bool {
+    matches!(ch, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
+/// Unicode line/paragraph separators that render as line breaks in many
+/// terminals but aren't caught by `char::is_control()` either (categories
+/// Zl/Zp, not Cc).
+fn is_unicode_linebreak(ch: char) -> bool {
+    matches!(ch, '\u{2028}' | '\u{2029}')
+}
+
 /// Strips ASCII control bytes (except `\n`/`\t`) — including the ESC byte
-/// that begins every ANSI escape sequence — from untrusted text before it
-/// is written to a terminal. This removes the trigger byte outright rather
-/// than substituting a visible placeholder, since the goal is preventing
-/// the escape sequence from being interpreted at all.
+/// that begins every ANSI escape sequence — and Unicode bidirectional-override
+/// characters from untrusted text before it is written to a terminal. This
+/// removes the trigger byte outright rather than substituting a visible
+/// placeholder, since the goal is preventing the escape sequence (or a
+/// spoofed display order) from being interpreted at all. `\n`/`\t` and the
+/// Unicode line/paragraph separators (U+2028/U+2029) are preserved, since
+/// they can be legitimate content in free text; bidi overrides are never
+/// legitimate in any context, so they are always stripped.
 ///
 /// Use this only for genuinely free-text fields where a literal `\n`/`\t`
 /// can be legitimate content. For structured fields (node names, paths, link
@@ -36,35 +61,47 @@ use crate::CommandOutput;
 /// newline, since one would let an attacker forge extra rows in
 /// table-shaped output. For free-text fields rendered inline within a single
 /// row, use [`sanitize_preview`] instead — it wraps this function and
-/// further escapes `\n`/`\t` to prevent them from being mistaken for
-/// separators.
+/// further escapes `\n`/`\t` and the Unicode line/paragraph separators to
+/// prevent them from being mistaken for separators.
 pub fn sanitize_for_terminal(raw: &str) -> String {
     raw.chars()
-        .filter(|&ch| ch == '\n' || ch == '\t' || !ch.is_control())
+        .filter(|&ch| {
+            ch == '\n'
+                || ch == '\t'
+                || is_unicode_linebreak(ch)
+                || (!ch.is_control() && !is_bidi_override(ch))
+        })
         .collect()
 }
 
 /// Stricter sibling of [`sanitize_for_terminal`] for structured fields
 /// (node names, paths, link targets) where a newline is never legitimate
-/// content. Strips every ASCII control byte, including `\n`/`\t`, so a
-/// hostile name/path cannot inject extra lines that masquerade as separate
-/// output rows.
+/// content. Strips every ASCII control byte (including `\n`/`\t`), every
+/// Unicode bidirectional-override character, and the Unicode line/paragraph
+/// separators, so a hostile name/path can neither inject extra lines that
+/// masquerade as separate output rows nor visually spoof its own content
+/// (e.g. a bidi override making an extension display reversed).
 pub fn sanitize_name(raw: &str) -> String {
-    raw.chars().filter(|ch| !ch.is_control()).collect()
+    raw.chars()
+        .filter(|&ch| !ch.is_control() && !is_bidi_override(ch) && !is_unicode_linebreak(ch))
+        .collect()
 }
 
-/// [`sanitize_for_terminal`], with `\n`/`\t` then escaped into visible
-/// two-character sequences instead of passed through raw. Use this for
-/// free-text content rendered *inline* within a single table-shaped
-/// output row (currently only search-match previews): a real newline in
-/// the underlying file content stays visible to the user, but can never
-/// be mistaken for a row boundary the way a raw `\n` could.
+/// [`sanitize_for_terminal`], with `\n`/`\t` and the Unicode line/paragraph
+/// separators (U+2028/U+2029) then escaped into visible two-character
+/// sequences instead of passed through raw. Use this for free-text content
+/// rendered *inline* within a single table-shaped output row (currently
+/// only search-match previews): a real newline (ASCII or Unicode) in the
+/// underlying file content stays visible to the user, but can never be
+/// mistaken for a row boundary the way a raw line break could.
 pub fn sanitize_preview(raw: &str) -> String {
     let mut escaped = String::with_capacity(raw.len());
     for ch in sanitize_for_terminal(raw).chars() {
         match ch {
             '\n' => escaped.push_str("\\n"),
             '\t' => escaped.push_str("\\t"),
+            '\u{2028}' => escaped.push_str("\\u{2028}"),
+            '\u{2029}' => escaped.push_str("\\u{2029}"),
             other => escaped.push(other),
         }
     }
