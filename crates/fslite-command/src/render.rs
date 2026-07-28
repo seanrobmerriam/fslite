@@ -2,19 +2,23 @@
 //! (used by default in `fslite-cli`) or pretty-printed JSON matching the
 //! wire codec exactly (`--json`). Every untrusted string field (node names,
 //! link targets, and paths — which `fslite-core` normalizes but does not
-//! strip control bytes from) is passed through [`sanitize_for_terminal`] or
-//! [`sanitize_name`] before it reaches a human-readable line, since a
-//! malicious filename or path segment is attacker-controlled input reaching
-//! a real terminal.
+//! strip control bytes from) is passed through one of three sanitizers
+//! before it reaches a human-readable line, since a malicious filename or
+//! path segment is attacker-controlled input reaching a real terminal.
 //!
-//! Two sanitizers exist because `\n`/`\t` are not uniformly safe to keep:
-//! [`sanitize_for_terminal`] preserves them for genuinely free-text fields
-//! (search match previews), where a literal newline can be legitimate file
-//! content. [`sanitize_name`] additionally strips `\n`/`\t` and is used for
-//! every *structured* field — node names, paths, and link targets — where a
+//! Three sanitizers exist because `\n`/`\t` are not uniformly safe to keep:
+//! [`sanitize_name`] strips all control bytes (including `\n`/`\t`) and is
+//! used for *structured* fields (node names, paths, link targets) where a
 //! newline is never legitimate and would otherwise let an attacker forge
 //! extra rows in table-shaped output (e.g. a node named
 //! `a.txt\nfile 999 IMPORTANT.txt` injecting a fake `ls` row).
+//! [`sanitize_for_terminal`] preserves `\n`/`\t` but strips other control
+//! bytes — used for free-text fields where raw newlines can be legitimate
+//! content. [`sanitize_preview`] is a stricter tier: it wraps
+//! [`sanitize_for_terminal`] but further escapes `\n`/`\t` into visible
+//! two-character sequences, for free-text content rendered *inline* within
+//! a single row (currently only search-match previews), keeping the content
+//! visible without letting it masquerade as a row boundary.
 
 use fslite_core::Node;
 
@@ -26,11 +30,14 @@ use crate::CommandOutput;
 /// than substituting a visible placeholder, since the goal is preventing
 /// the escape sequence from being interpreted at all.
 ///
-/// Use this only for genuinely free-text fields (e.g. search match
-/// previews) where a literal `\n`/`\t` can be legitimate content. For
-/// structured fields (node names, paths, link targets), use
-/// [`sanitize_name`] instead — those must never contain a newline, since one
-/// would let an attacker forge extra rows in table-shaped output.
+/// Use this only for genuinely free-text fields where a literal `\n`/`\t`
+/// can be legitimate content. For structured fields (node names, paths, link
+/// targets), use [`sanitize_name`] instead — those must never contain a
+/// newline, since one would let an attacker forge extra rows in
+/// table-shaped output. For free-text fields rendered inline within a single
+/// row, use [`sanitize_preview`] instead — it wraps this function and
+/// further escapes `\n`/`\t` to prevent them from being mistaken for
+/// separators.
 pub fn sanitize_for_terminal(raw: &str) -> String {
     raw.chars()
         .filter(|&ch| ch == '\n' || ch == '\t' || !ch.is_control())
