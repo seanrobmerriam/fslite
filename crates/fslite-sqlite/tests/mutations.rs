@@ -371,4 +371,3 @@ async fn mkdir_over_an_existing_file_is_wrong_node_type() {
         .unwrap_err();
     assert_eq!(error.code(), ErrorCode::WrongNodeType);
 }
-

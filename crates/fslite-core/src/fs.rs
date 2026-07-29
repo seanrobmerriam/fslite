@@ -662,4 +662,3 @@ pub trait FileSystem: Send + Sync {
         page: PageRequest,
     ) -> FsResult<Page<Change>>;
 }
-

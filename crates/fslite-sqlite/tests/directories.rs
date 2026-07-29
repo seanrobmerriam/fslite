@@ -229,4 +229,3 @@ async fn identical_paths_in_two_workspaces_do_not_leak() {
     assert_eq!(second_listing.items.len(), 1);
     assert_ne!(first_listing.items[0].id, second_listing.items[0].id);
 }
-

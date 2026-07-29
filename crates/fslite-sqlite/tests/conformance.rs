@@ -43,4 +43,3 @@ async fn sqlite_backend_satisfies_the_conformance_suite() {
     let factory = SqliteConformanceFactory::default();
     fslite_conformance::run_conformance(&factory).await;
 }
-

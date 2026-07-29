@@ -336,4 +336,3 @@ async fn symlink_requires_write_capability_and_exists_ok_returns_existing() {
         .unwrap();
     assert_eq!(first.id, second.id);
 }
-

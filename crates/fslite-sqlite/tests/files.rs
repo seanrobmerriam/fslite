@@ -455,4 +455,3 @@ async fn truncate_on_missing_file_is_not_found() {
         .unwrap_err();
     assert_eq!(error.code(), ErrorCode::NotFound);
 }
-

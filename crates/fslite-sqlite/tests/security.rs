@@ -112,4 +112,3 @@ async fn cursor_from_one_workspace_is_rejected_in_another() {
         .unwrap_err();
     assert_eq!(error.code(), ErrorCode::InvalidCursor);
 }
-

@@ -26,4 +26,3 @@ fn rejects_empty_and_nul_link_targets() {
         assert!(LinkTarget::parse(input).is_err(), "{input:?}");
     }
 }
-

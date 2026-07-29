@@ -165,4 +165,3 @@ impl FsError {
         Self::new(code, format!("{label}: {subject}"), Value::Null)
     }
 }
-

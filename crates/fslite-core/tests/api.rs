@@ -551,4 +551,3 @@ async fn symlink_and_read_link_round_trip_a_relative_link_target() {
 
     assert_eq!(stored, target);
 }
-

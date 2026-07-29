@@ -34,4 +34,3 @@ pub use options::{
     TouchOptions, TreeOptions, WriteOptions,
 };
 pub use path::{LinkTarget, VirtualPath};
-

@@ -117,4 +117,3 @@ async fn malformed_change_cursor_is_rejected() {
         .unwrap_err();
     assert_eq!(error.code(), ErrorCode::InvalidCursor);
 }
-

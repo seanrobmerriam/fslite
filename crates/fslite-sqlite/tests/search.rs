@@ -389,4 +389,3 @@ async fn search_content_result_limit_is_respected() {
         .unwrap();
     assert_eq!(page.items.len(), 2);
 }
-

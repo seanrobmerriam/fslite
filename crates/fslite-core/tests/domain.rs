@@ -45,4 +45,3 @@ fn node_carries_all_filesystem_timestamps() {
 
     assert_eq!(node.accessed_at_ms, 30);
 }
-

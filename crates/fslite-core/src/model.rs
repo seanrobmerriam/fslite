@@ -133,4 +133,3 @@ pub struct Node {
     /// Application-defined metadata associated with this node.
     pub attributes: BTreeMap<String, Value>,
 }
-

@@ -251,4 +251,3 @@ async fn restoring_an_unknown_trash_id_is_not_found() {
         .unwrap_err();
     assert_eq!(error.code(), ErrorCode::NotFound);
 }
-

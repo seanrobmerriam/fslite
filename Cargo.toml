@@ -4,9 +4,6 @@ members = [
   "crates/fslite-core",
   "crates/fslite-sqlite",
   "crates/fslite-conformance",
-  "crates/fslite-server",
-  "crates/fslite-command",
-  "crates/fslite-cli",
 ]
 
 [workspace.package]
@@ -16,14 +13,10 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 async-trait = "0.1"
-axum = "0.8"
 base64 = "0.22"
 bytes = "1"
-clap = { version = "4", features = ["derive", "env"] }
 futures = "0.3"
-http-body-util = "0.1"
 proptest = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -31,8 +24,4 @@ tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
 tokio-rusqlite = "0.6"
-tower = "0.5"
-tower-http = { version = "0.6", features = ["trace"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["serde", "v7"] }

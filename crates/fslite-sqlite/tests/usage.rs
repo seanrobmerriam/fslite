@@ -106,4 +106,3 @@ async fn usage_respects_configured_quotas() {
     assert_eq!(usage.max_nodes, 10);
     assert_eq!(usage.max_file_bytes, 1024);
 }
-

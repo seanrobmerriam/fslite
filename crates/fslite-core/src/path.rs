@@ -228,4 +228,3 @@ fn normalize_relative<'a>(segments: impl IntoIterator<Item = &'a str>) -> Arc<st
 
     Arc::from(normalized.join("/"))
 }
-

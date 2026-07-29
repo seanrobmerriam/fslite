@@ -104,4 +104,3 @@ async fn workspace_usage_reports_active_nodes() {
     assert_eq!(usage.active_nodes, 2);
     assert_eq!(usage.trashed_nodes, 0);
 }
-
