@@ -26,3 +26,7 @@ tempfile.workspace = true
 [[example]]
 name = "embedded"
 path = "../../examples/embedded.rs"
+
+[[example]]
+name = "batch"
+path = "../../examples/batch.rs"
