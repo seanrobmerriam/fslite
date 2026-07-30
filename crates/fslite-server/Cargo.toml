@@ -24,3 +24,8 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+fslite-command = { path = "../fslite-command" }
+
+[[example]]
+name = "server_and_remote_cli"
+path = "../../examples/server_and_remote_cli.rs"
