@@ -38,3 +38,7 @@ path = "../../examples/trash_lifecycle.rs"
 [[example]]
 name = "workspace_isolation"
 path = "../../examples/workspace_isolation.rs"
+
+[[example]]
+name = "search_and_glob"
+path = "../../examples/search_and_glob.rs"
