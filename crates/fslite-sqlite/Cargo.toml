@@ -30,3 +30,7 @@ path = "../../examples/embedded.rs"
 [[example]]
 name = "batch"
 path = "../../examples/batch.rs"
+
+[[example]]
+name = "trash_lifecycle"
+path = "../../examples/trash_lifecycle.rs"
