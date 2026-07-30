@@ -1,7 +1,8 @@
 # fslite
 
-A transport-independent, async filesystem interface and a persistent,
-multi-workspace SQLite implementation suitable for direct embedding.
+A transport-independent, async filesystem interface; a persistent,
+multi-workspace SQLite implementation suitable for direct embedding; and an
+HTTP server, typed command codec, and CLI built on top of it.
 
 ## Workspace layout
 
@@ -10,6 +11,9 @@ multi-workspace SQLite implementation suitable for direct embedding.
 | [`fslite-core`](crates/fslite-core) | The canonical `FileSystem` trait, domain types (`VirtualPath`, `Node`, `Revision`, ...), and stable typed errors. Transport-independent: no SQL, no HTTP, no host filesystem paths. |
 | [`fslite-sqlite`](crates/fslite-sqlite) | `SqliteFileSystem`: a `FileSystem` implementation backed by one SQLite database that can hold many isolated workspaces. |
 | [`fslite-conformance`](crates/fslite-conformance) | A backend-agnostic contract test suite. Any `FileSystem` implementation can prove basic compliance by implementing `ConformanceFactory` and calling `run_conformance`. |
+| [`fslite-server`](crates/fslite-server) | An `axum`-based HTTP adapter exposing `FileSystem` as a resource-oriented API: nodes, directories, trash, content (including ranged reads), search, batch, and workspace-admin routes, gated behind a pluggable `AuthProvider`. |
+| [`fslite-command`](crates/fslite-command) | A typed `Command` codec (one variant per `FileSystem` operation), a constrained shell-like lexer/parser, and local/remote executors that drive either an in-process `FileSystem` or a running `fslite-server` over HTTP. |
+| [`fslite-cli`](crates/fslite-cli) | `fslite-cli`: a command-line client built on `fslite-command`, usable against a local SQLite database, an in-memory database, or a remote `fslite-server`, in one-shot or REPL mode. |
 
 ## Quick start
 
@@ -35,7 +39,72 @@ while let Some(chunk) = stream.next().await {
 ```
 
 See [`examples/embedded.rs`](examples/embedded.rs) for a complete, runnable
-version (`cargo run --example embedded`).
+version (`cargo run --example embedded`), and the full list below for more.
+
+## Examples
+
+Every example is self-contained (opens its own in-memory database, needs no
+setup) and runnable with `cargo run --example <name>`:
+
+| Example | Demonstrates |
+| --- | --- |
+| [`embedded`](examples/embedded.rs) | Open a database, write a file from a byte stream, read it back, list a directory, print workspace usage. |
+| [`batch`](examples/batch.rs) | Atomic multi-operation batches via `batch` — an aborted batch commits nothing, a valid one commits every operation together. |
+| [`trash_lifecycle`](examples/trash_lifecycle.rs) | `trash` hides a subtree without touching its data, `restore` brings it back (optionally under a new name), and `purge` is the only way its content is actually reclaimed. |
+| [`workspace_isolation`](examples/workspace_isolation.rs) | Two workspaces in one database hold the same path independently, with no cross-workspace visibility — including a rejected cross-workspace pagination cursor. |
+| [`search_and_glob`](examples/search_and_glob.rs) | `glob` (path-shape matching), `find` (bounded metadata predicates), and `search_content` (literal byte matches inside files). |
+| [`server_and_remote_cli`](examples/server_and_remote_cli.rs) | Runs `fslite-server`'s HTTP API in-process and drives it with `fslite-command`'s `RemoteExecutor` — the same client `fslite-cli --server` uses — over a real TCP connection. |
+
+## CLI and server
+
+`fslite-cli` can talk to a local database file, a private in-memory one, or a
+remote `fslite-server` over HTTP — the same verb syntax works in all three
+modes. Flag values use `--name=value` (the lexer does not treat a following
+bare word as a flag's value). `--memory` opens a fresh, unshared database for
+that single process only, so it's suited to one-off experiments or scripts
+that create a workspace and use it within the same invocation; use
+`--db <path>` whenever a workspace needs to be visible across separate
+`fslite-cli` invocations:
+
+```bash
+# Local, one-shot, persisted to a file
+cargo run -p fslite-cli -- --db ./fslite.db --create-workspace
+cargo run -p fslite-cli -- --db ./fslite.db --workspace <id> mkdir /docs
+cargo run -p fslite-cli -- --db ./fslite.db --workspace <id> write /docs/hello.txt --text=hi
+cargo run -p fslite-cli -- --db ./fslite.db --workspace <id> ls /
+
+# Local, interactive REPL (the workspace must already exist — create it
+# first, as above, or against the same --db file)
+cargo run -p fslite-cli -- --db ./fslite.db --workspace <id> --repl
+
+# Remote, against a running fslite-server
+cargo run -p fslite-cli -- --server http://localhost:8080 --workspace <id> \
+  --token "$FSLITE_TOKEN" ls /
+```
+
+`fslite-server` is a standalone binary; it reads bearer tokens from
+`FSLITE_TOKENS` (`token=workspace_uuid` pairs) and serves an in-memory
+`SqliteFileSystem` on `0.0.0.0:8080`:
+
+```bash
+FSLITE_TOKENS="devtoken=<workspace-uuid>" cargo run -p fslite-server
+```
+
+This shipped `main.rs` is reference wiring, not a deployable server as-is: the
+backing store is a fresh in-memory database on every start (nothing survives
+a restart), and `FSLITE_TOKENS` is read once at startup, so a workspace
+created afterward via `POST /v1/workspaces` has no token that can reach it
+until the process is restarted with that id added — which then loses the
+workspace again. A real deployment needs its own `main` wiring a persistent
+`SqliteFileSystem::open(path, ..)` and its own `AuthProvider` that can mint or
+look up tokens for workspaces created at runtime.
+
+Every verb `fslite-command` understands corresponds one-to-one to a
+`FileSystem` method: `usage`, `stat`, `exists`, `ls`, `tree`, `mkdir`, `cat`,
+`write`, `write-at`, `append`, `truncate`, `touch`, `cp`, `mv`, `rm`, `ln`,
+`readlink`, `trash`, `trash-ls`, `restore`, `purge`, `setattr`, `rmattr`,
+`glob`, `find`, `grep`, `changes`, and `batch` — plus `--json` on the CLI for
+machine-readable output.
 
 ## Limits
 
@@ -130,6 +199,11 @@ is run against `SqliteFileSystem` in `crates/fslite-sqlite/tests/conformance.rs`
 
 The canonical `FileSystem` trait and the SQLite backend are complete: all 28
 trait methods are implemented and covered by the conformance suite plus the
-SQLite backend's own extensive test suite. Two follow-on plans build on this
-crate's exact public API: `fslite-server` (an HTTP adapter) and
-`fslite-command`/`fslite-cli` (a typed command codec and CLI).
+SQLite backend's own extensive test suite. `fslite-server`, `fslite-command`,
+and `fslite-cli` build on this crate's exact public API and are workspace
+members with their own test suites (HTTP contract tests for the server;
+lexer/parser/sanitizer/executor tests for the command codec; end-to-end
+local, remote, and REPL tests for the CLI). They've had several rounds of
+security hardening (bidi-override stripping, output sanitization, token
+handling) but are newer than `fslite-core`/`fslite-sqlite` and should be
+treated as less battle-tested.
