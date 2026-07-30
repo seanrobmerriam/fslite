@@ -34,3 +34,7 @@ path = "../../examples/batch.rs"
 [[example]]
 name = "trash_lifecycle"
 path = "../../examples/trash_lifecycle.rs"
+
+[[example]]
+name = "workspace_isolation"
+path = "../../examples/workspace_isolation.rs"
