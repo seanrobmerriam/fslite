@@ -67,15 +67,18 @@ that create a workspace and use it within the same invocation; use
 `fslite-cli` invocations:
 
 ```bash
-# Local, one-shot, persisted to a file
-cargo run -p fslite-cli -- --db ./fslite.db --create-workspace
-cargo run -p fslite-cli -- --db ./fslite.db --workspace <id> mkdir /docs
-cargo run -p fslite-cli -- --db ./fslite.db --workspace <id> write /docs/hello.txt --text=hi
-cargo run -p fslite-cli -- --db ./fslite.db --workspace <id> ls /
+# Local, one-shot, persisted to a file. --create-workspace prints the new
+# workspace's id as its only line of output (after cargo's own build/run
+# noise) — capture it with `-q` to suppress that noise and keep the
+# variable clean:
+WORKSPACE=$(cargo run -q -p fslite-cli -- --db ./fslite.db --create-workspace)
+cargo run -p fslite-cli -- --db ./fslite.db --workspace "$WORKSPACE" mkdir /docs
+cargo run -p fslite-cli -- --db ./fslite.db --workspace "$WORKSPACE" write /docs/hello.txt --text=hi
+cargo run -p fslite-cli -- --db ./fslite.db --workspace "$WORKSPACE" ls /
 
 # Local, interactive REPL (the workspace must already exist — create it
 # first, as above, or against the same --db file)
-cargo run -p fslite-cli -- --db ./fslite.db --workspace <id> --repl
+cargo run -p fslite-cli -- --db ./fslite.db --workspace "$WORKSPACE" --repl
 
 # Remote, against a running fslite-server
 cargo run -p fslite-cli -- --server http://localhost:8080 --workspace <id> \
