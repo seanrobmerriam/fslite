@@ -9,6 +9,8 @@ use fslite_command::{
 use fslite_core::{FileSystem, RequestContext, WorkspaceId};
 use fslite_sqlite::SqliteFileSystem;
 
+mod paths;
+
 /// `fslite-cli` — a constrained shell-like client for `fslite`, local or remote.
 ///
 /// The outer flags below (parsed by `clap`) select *how* to connect; the
