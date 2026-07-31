@@ -66,6 +66,34 @@ that create a workspace and use it within the same invocation; use
 `--db <path>` whenever a workspace needs to be visible across separate
 `fslite-cli` invocations:
 
+For everyday interactive use, `fslite` also supports named filesystems and
+workspaces, persisted in a small local registry
+(`$XDG_CONFIG_HOME/fslite` or `~/.config/fslite`, overridable via
+`FSLITE_CONFIG_DIR`) so you don't need to repeat `--db`/`--workspace` on
+every invocation:
+
+```bash
+fslite create filesystem-main -f fsmain.db -w workspace-main
+fslite use filesystem-main -w workspace-main
+
+fslite mkdir /docs
+fslite touch /docs/file.md
+fslite write /docs/file.md --text=hello
+fslite cat /docs/file.md
+fslite rm /docs/file.md
+
+fslite delete filesystem-main -y   # permanently deletes fsmain.db
+```
+
+`create`/`use`/`delete` manage this registry only — the names it stores
+have no meaning to `fslite-core`/`fslite-sqlite`/`fslite-server`, which
+only ever see raw workspace ids. `--filesystem <name>` and `--workspace
+<name-or-id>` override the persisted context for a single invocation
+without changing it (`fslite --filesystem other-fs mkdir /tmp`); the raw
+`--db`/`--memory`/`--server` + `--workspace <uuid>` flags shown below
+remain fully supported and bypass the registry/context entirely — useful
+for scripting against a database you don't want registered under a name.
+
 ```bash
 # Local, one-shot, persisted to a file. --create-workspace prints the new
 # workspace's id as its only line of output (after cargo's own build/run
