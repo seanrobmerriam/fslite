@@ -9,6 +9,7 @@ use fslite_command::{
 use fslite_core::{FileSystem, RequestContext, WorkspaceId};
 use fslite_sqlite::SqliteFileSystem;
 
+pub mod cli;
 pub mod context;
 pub mod paths;
 pub mod registry;
