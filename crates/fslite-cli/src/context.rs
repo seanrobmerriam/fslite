@@ -55,18 +55,7 @@ impl Context {
 mod tests {
     use super::*;
 
-    fn with_temp_config_dir<T>(f: impl FnOnce() -> T) -> T {
-        let dir = tempfile::tempdir().unwrap();
-        // SAFETY: single-threaded — see paths.rs's test module note.
-        unsafe {
-            std::env::set_var("FSLITE_CONFIG_DIR", dir.path());
-        }
-        let result = f();
-        unsafe {
-            std::env::remove_var("FSLITE_CONFIG_DIR");
-        }
-        result
-    }
+    use crate::test_support::with_temp_config_dir;
 
     #[test]
     fn round_trips_through_save_and_load() {

@@ -25,8 +25,10 @@ mod tests {
 
     #[test]
     fn fslite_config_dir_env_var_wins_over_everything() {
-        // SAFETY: this test only ever sets/removes env vars local to this
-        // process, never spawns a subprocess or touches shared state.
+        // Held for the whole test body — see `crate::test_support` for why
+        // env-var-mutating tests must serialize against each other.
+        let _guard = crate::test_support::lock();
+        // SAFETY: serialized by the lock above.
         unsafe {
             std::env::set_var("FSLITE_CONFIG_DIR", "/tmp/fslite-test-config");
             std::env::set_var("XDG_CONFIG_HOME", "/should/be/ignored");
@@ -41,6 +43,8 @@ mod tests {
 
     #[test]
     fn xdg_config_home_is_used_when_set() {
+        let _guard = crate::test_support::lock();
+        // SAFETY: serialized by the lock above.
         unsafe {
             std::env::remove_var("FSLITE_CONFIG_DIR");
             std::env::set_var("XDG_CONFIG_HOME", "/tmp/fslite-xdg-test");

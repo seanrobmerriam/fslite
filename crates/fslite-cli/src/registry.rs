@@ -112,19 +112,7 @@ impl Registry {
 mod tests {
     use super::*;
 
-    fn with_temp_config_dir<T>(f: impl FnOnce() -> T) -> T {
-        let dir = tempfile::tempdir().unwrap();
-        // SAFETY: single-threaded per Task 2's Step 1 note — this crate's
-        // tests run with `--test-threads=1`.
-        unsafe {
-            std::env::set_var("FSLITE_CONFIG_DIR", dir.path());
-        }
-        let result = f();
-        unsafe {
-            std::env::remove_var("FSLITE_CONFIG_DIR");
-        }
-        result
-    }
+    use crate::test_support::with_temp_config_dir;
 
     #[test]
     fn round_trips_through_save_and_load() {
