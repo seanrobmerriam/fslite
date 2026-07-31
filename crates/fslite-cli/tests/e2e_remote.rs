@@ -61,7 +61,7 @@ async fn spawn_server() -> (String, fslite_core::WorkspaceId) {
 async fn cli_remote_mode_matches_local_mode_behavior() {
     let (base_url, workspace_id) = spawn_server().await;
 
-    let write = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let write = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .args([
             "--server",
             &base_url,
@@ -81,7 +81,7 @@ async fn cli_remote_mode_matches_local_mode_behavior() {
         String::from_utf8_lossy(&write.stderr)
     );
 
-    let cat = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let cat = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .args([
             "--server",
             &base_url,
@@ -114,7 +114,7 @@ async fn cli_remote_mode_matches_local_mode_behavior() {
 async fn token_can_be_supplied_via_fslite_token_env_var_instead_of_argv() {
     let (base_url, workspace_id) = spawn_server().await;
 
-    let write = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let write = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .env("FSLITE_TOKEN", TOKEN)
         .args([
             "--server",
@@ -133,7 +133,7 @@ async fn token_can_be_supplied_via_fslite_token_env_var_instead_of_argv() {
         String::from_utf8_lossy(&write.stderr)
     );
 
-    let cat = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let cat = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .env("FSLITE_TOKEN", TOKEN)
         .args([
             "--server",

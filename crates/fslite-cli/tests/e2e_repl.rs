@@ -6,13 +6,13 @@ fn repl_mode_executes_piped_commands_line_by_line() {
     let db = tempfile::NamedTempFile::new().unwrap();
     let db_path = db.path().to_str().unwrap();
 
-    let create = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let create = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .args(["--db", db_path, "--create-workspace"])
         .output()
         .unwrap();
     let workspace_id = String::from_utf8(create.stdout).unwrap().trim().to_string();
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .args(["--db", db_path, "--workspace", &workspace_id, "--repl"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -45,13 +45,13 @@ fn repl_mode_executes_piped_commands_line_by_line() {
 fn repl_mode_never_writes_a_raw_escape_byte_to_stderr_on_error() {
     let db = tempfile::NamedTempFile::new().unwrap();
     let db_path = db.path().to_str().unwrap();
-    let create = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let create = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .args(["--db", db_path, "--create-workspace"])
         .output()
         .unwrap();
     let workspace_id = String::from_utf8(create.stdout).unwrap().trim().to_string();
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .args(["--db", db_path, "--workspace", &workspace_id, "--repl"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -107,13 +107,13 @@ fn repl_mode_never_writes_a_raw_escape_byte_to_stderr_on_error() {
 fn repl_mode_does_not_forge_an_extra_stderr_line_from_a_lexer_escaped_newline() {
     let db = tempfile::NamedTempFile::new().unwrap();
     let db_path = db.path().to_str().unwrap();
-    let create = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let create = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .args(["--db", db_path, "--create-workspace"])
         .output()
         .unwrap();
     let workspace_id = String::from_utf8(create.stdout).unwrap().trim().to_string();
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .args(["--db", db_path, "--workspace", &workspace_id, "--repl"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -157,13 +157,13 @@ fn repl_mode_does_not_forge_an_extra_stderr_line_from_a_lexer_escaped_newline() 
 fn repl_mode_reports_parse_errors_on_stderr_without_exiting() {
     let db = tempfile::NamedTempFile::new().unwrap();
     let db_path = db.path().to_str().unwrap();
-    let create = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let create = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .args(["--db", db_path, "--create-workspace"])
         .output()
         .unwrap();
     let workspace_id = String::from_utf8(create.stdout).unwrap().trim().to_string();
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_fslite-cli"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_fslite"))
         .args(["--db", db_path, "--workspace", &workspace_id, "--repl"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

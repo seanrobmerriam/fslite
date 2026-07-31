@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "fslite-cli"
+name = "fslite"
 path = "src/main.rs"
 
 [dependencies]
@@ -14,10 +14,11 @@ clap.workspace = true
 fslite-command = { path = "../fslite-command" }
 fslite-core = { path = "../fslite-core" }
 fslite-sqlite = { path = "../fslite-sqlite" }
+serde.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = ["full"] }
 
 [dev-dependencies]
 axum.workspace = true
 fslite-server = { path = "../fslite-server" }
-serde_json.workspace = true
 tempfile.workspace = true
