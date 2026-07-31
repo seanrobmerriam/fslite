@@ -9,7 +9,10 @@ use fslite_command::{
 use fslite_core::{FileSystem, RequestContext, WorkspaceId};
 use fslite_sqlite::SqliteFileSystem;
 
+#[allow(dead_code)]
 mod paths;
+#[allow(dead_code)]
+mod registry;
 
 /// `fslite-cli` — a constrained shell-like client for `fslite`, local or remote.
 ///

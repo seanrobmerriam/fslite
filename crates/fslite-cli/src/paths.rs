@@ -6,7 +6,6 @@
 
 use std::path::PathBuf;
 
-#[allow(dead_code)]
 pub fn config_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     if let Ok(dir) = std::env::var("FSLITE_CONFIG_DIR") {
         return Ok(PathBuf::from(dir));
