@@ -13,6 +13,8 @@ mod cli;
 mod context;
 mod paths;
 mod registry;
+#[cfg(test)]
+mod test_support;
 
 use cli::{Action, Cli};
 use context::Context;
@@ -36,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => {}
     }
 
-    let (target, filesystem_name) = resolve_target(&cli)?;
+    let (target, filesystem_source) = resolve_target(&cli)?;
 
     if cli.create_workspace {
         let fs = open_target(&target).await?;
@@ -53,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(LocalExecutor::new(Arc::new(fs) as Arc<dyn FileSystem>))
     };
 
-    let workspace_id = resolve_workspace(&cli, filesystem_name.as_deref())?;
+    let workspace_id = resolve_workspace(&cli, &filesystem_source)?;
     let ctx = RequestContext::trusted(workspace_id);
 
     if cli.repl {
@@ -84,22 +86,54 @@ enum Target {
     Remote(String),
 }
 
+/// Which provenance (if any) produced a resolved filesystem name.
+/// `resolve_workspace`'s fallback to the persisted context's *workspace*
+/// name is only correct when the filesystem name it's being resolved
+/// against came from that *same* persisted context — mixing an explicit
+/// `--filesystem <name>` override with a workspace silently inherited from
+/// a stale `fslite use` would resolve the wrong workspace against the
+/// right filesystem (a real filesystem override silently paired with the
+/// wrong workspace, not a data-loss bug, but a misleading one). Keeping
+/// this as three explicit states (rather than a bare `Option<String>`)
+/// makes that distinction impossible to lose at the call site.
+enum FilesystemSource {
+    /// The target never touched the registry at all (`--db`/`--memory`/
+    /// `--server`), so there is no filesystem name to resolve a workspace
+    /// name against.
+    None,
+    /// `--filesystem <name>` was given explicitly on this invocation.
+    Explicit(String),
+    /// The name came from the persisted context (set by `fslite use`).
+    FromContext(String),
+}
+
+impl FilesystemSource {
+    fn name(&self) -> Option<&str> {
+        match self {
+            FilesystemSource::None => None,
+            FilesystemSource::Explicit(name) | FilesystemSource::FromContext(name) => Some(name),
+        }
+    }
+}
+
 /// Resolves which database this invocation targets, and (for local
 /// targets reached via `--filesystem` or the persisted context) which
-/// registered filesystem name that was, so `resolve_workspace` can look up
-/// a workspace *name* against it. Returns `None` for the name when the
-/// target came from a raw `--db`/`--memory`/`--server` flag — those never
-/// touch the registry, so a plain `--workspace <uuid>` continues to work
-/// with zero registry/context involvement, exactly as it does today.
-fn resolve_target(cli: &Cli) -> Result<(Target, Option<String>), Box<dyn std::error::Error>> {
+/// registered filesystem name that was *and where it came from*, so
+/// `resolve_workspace` can look up a workspace *name* against it without
+/// conflating an explicit override with an inherited default. Returns
+/// `FilesystemSource::None` when the target came from a raw
+/// `--db`/`--memory`/`--server` flag — those never touch the registry, so
+/// a plain `--workspace <uuid>` continues to work with zero
+/// registry/context involvement, exactly as it does today.
+fn resolve_target(cli: &Cli) -> Result<(Target, FilesystemSource), Box<dyn std::error::Error>> {
     if let Some(db) = &cli.db {
-        return Ok((Target::Local(db.clone()), None));
+        return Ok((Target::Local(db.clone()), FilesystemSource::None));
     }
     if cli.memory {
-        return Ok((Target::Memory, None));
+        return Ok((Target::Memory, FilesystemSource::None));
     }
     if let Some(server) = &cli.server {
-        return Ok((Target::Remote(server.clone()), None));
+        return Ok((Target::Remote(server.clone()), FilesystemSource::None));
     }
     if let Some(name) = &cli.filesystem {
         let registry = Registry::load()?;
@@ -107,7 +141,10 @@ fn resolve_target(cli: &Cli) -> Result<(Target, Option<String>), Box<dyn std::er
             .filesystem_path(name)
             .ok_or_else(|| format!("no registered filesystem named {name:?}"))?
             .to_path_buf();
-        return Ok((Target::Local(path), Some(name.clone())));
+        return Ok((
+            Target::Local(path),
+            FilesystemSource::Explicit(name.clone()),
+        ));
     }
     let context = Context::load()?;
     let name = context.filesystem.ok_or(
@@ -122,7 +159,7 @@ fn resolve_target(cli: &Cli) -> Result<(Target, Option<String>), Box<dyn std::er
             )
         })?
         .to_path_buf();
-    Ok((Target::Local(path), Some(name)))
+    Ok((Target::Local(path), FilesystemSource::FromContext(name)))
 }
 
 async fn open_target(target: &Target) -> Result<SqliteFileSystem, Box<dyn std::error::Error>> {
@@ -142,17 +179,24 @@ async fn open_target(target: &Target) -> Result<SqliteFileSystem, Box<dyn std::e
 /// invocation (as used throughout this crate's existing tests) never
 /// depends on `--filesystem` or any registered name. Only when that parse
 /// fails does `--workspace` get treated as a name, resolved against
-/// `filesystem_name`. Absent `--workspace` entirely, falls back to the
-/// persisted context's workspace name.
+/// `filesystem_source`'s name (whatever its provenance).
+///
+/// Absent `--workspace` entirely, this only falls back to the persisted
+/// context's workspace name when the filesystem name *also* came from
+/// that context (`FilesystemSource::FromContext`). When `--filesystem
+/// <name>` was given explicitly and `--workspace` was not, falling back to
+/// the persisted context's workspace would silently pair an
+/// explicitly-chosen filesystem with a workspace name left over from a
+/// *different* `fslite use` — so that combination is a hard error instead.
 fn resolve_workspace(
     cli: &Cli,
-    filesystem_name: Option<&str>,
+    filesystem_source: &FilesystemSource,
 ) -> Result<WorkspaceId, Box<dyn std::error::Error>> {
     if let Some(reference) = &cli.workspace {
         if let Ok(id) = WorkspaceId::parse(reference) {
             return Ok(id);
         }
-        let name = filesystem_name.ok_or_else(|| {
+        let name = filesystem_source.name().ok_or_else(|| {
             format!(
                 "{reference:?} is not a valid workspace id, and no named filesystem is selected to resolve it as a name"
             )
@@ -165,11 +209,20 @@ fn resolve_workspace(
                     .into()
             });
     }
+
+    if let FilesystemSource::Explicit(name) = filesystem_source {
+        return Err(format!(
+            "--filesystem {name:?} was given without --workspace — pass --workspace <name-or-id> too, or use `fslite use` to set both persistently"
+        )
+        .into());
+    }
+
     let context = Context::load()?;
     let workspace_name = context.workspace.ok_or(
         "no workspace selected: pass --workspace, or run `fslite use <filesystem> -w <workspace>` first",
     )?;
-    let name = filesystem_name
+    let name = filesystem_source
+        .name()
         .ok_or("the active context has a workspace but no filesystem — run `fslite use` again")?;
     let registry = Registry::load()?;
     registry
@@ -201,7 +254,10 @@ async fn create_filesystem(
     let fs = SqliteFileSystem::open(file, Default::default()).await?;
     let absolute_path = std::fs::canonicalize(file)?;
     registry.register_filesystem(name.to_string(), absolute_path.clone());
-    println!("created filesystem {name:?} at {}", absolute_path.display());
+    println!(
+        "created filesystem {name:?} at {}",
+        fslite_command::render::sanitize_name(&absolute_path.display().to_string())
+    );
 
     if let Some(workspace_name) = workspace_name {
         let workspace = fs.create_workspace(Default::default()).await?;
@@ -224,9 +280,9 @@ fn delete_filesystem(name: &str, yes: bool) -> Result<(), Box<dyn std::error::Er
         let workspace_names = registry.workspace_names(name);
         println!(
             "This will permanently delete {} and forget {} registered workspace(s) ({}).",
-            path.display(),
+            fslite_command::render::sanitize_name(&path.display().to_string()),
             workspace_names.len(),
-            workspace_names.join(", ")
+            fslite_command::render::sanitize_name(&workspace_names.join(", "))
         );
         print!("Type the filesystem name ({name:?}) to confirm: ");
         std::io::stdout().flush().ok();
@@ -238,9 +294,15 @@ fn delete_filesystem(name: &str, yes: bool) -> Result<(), Box<dyn std::error::Er
     }
 
     match std::fs::remove_file(&path) {
-        Ok(()) => println!("deleted {}", path.display()),
+        Ok(()) => println!(
+            "deleted {}",
+            fslite_command::render::sanitize_name(&path.display().to_string())
+        ),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            println!("{} was already gone; forgetting it anyway", path.display());
+            println!(
+                "{} was already gone; forgetting it anyway",
+                fslite_command::render::sanitize_name(&path.display().to_string())
+            );
         }
         Err(err) => return Err(err.into()),
     }
