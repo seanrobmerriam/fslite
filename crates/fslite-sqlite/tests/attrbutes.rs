@@ -307,3 +307,4 @@ async fn set_attribute_on_a_missing_path_is_not_found() {
         .unwrap_err();
     assert_eq!(error.code(), ErrorCode::NotFound);
 }
+
