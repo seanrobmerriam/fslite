@@ -360,6 +360,7 @@ dependencies = [
  "fslite-core",
  "fslite-server",
  "fslite-sqlite",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
