@@ -5,6 +5,7 @@
 mod bytes_b64;
 mod command;
 mod executor;
+pub mod help;
 pub mod lexer;
 mod local;
 mod output;
@@ -14,6 +15,7 @@ pub mod render;
 
 pub use command::Command;
 pub use executor::Executor;
+pub use help::{VERB_HELP, VerbHelp, print_verb_help, print_verb_table};
 pub use local::LocalExecutor;
 pub use output::CommandOutput;
 pub use remote::RemoteExecutor;

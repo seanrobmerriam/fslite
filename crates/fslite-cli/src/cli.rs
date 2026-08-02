@@ -17,7 +17,15 @@ use clap::{Parser, Subcommand};
 
 /// `fslite` — a constrained shell-like client for `fslite`, local or remote.
 #[derive(Parser)]
-#[command(name = "fslite")]
+#[command(
+    name = "fslite",
+    // The `Action::Help` variant below would otherwise collide with
+    // clap's auto-generated `help` subcommand (which prints the same
+    // content as the `--help` flag). Disabling that subcommand leaves
+    // `--help`/`-h` working (which users reach for by default) while
+    // letting `fslite help [<verb>]` print the per-verb table.
+    disable_help_subcommand = true
+)]
 pub struct Cli {
     /// Path to a local SQLite database (local mode).
     #[arg(long, global = true, conflicts_with_all = ["memory", "server", "filesystem"])]
@@ -104,6 +112,13 @@ pub enum Action {
         /// A workspace name registered against that filesystem.
         #[arg(short = 'w', long = "workspace-name")]
         workspace_name: String,
+    },
+    /// List every CLI verb, or show one verb's full flag table. Bypasses
+    /// the `external_subcommand` catcher below so a user can discover the
+    /// verb surface without reading the README first.
+    Help {
+        /// Optional verb name to show detail for. Omit to list all verbs.
+        verb: Option<String>,
     },
     /// Catches every other first word: a data-plane verb (mkdir, touch,
     /// write, rm, ls, ...) and its arguments, passed through untouched to
@@ -200,6 +215,45 @@ mod tests {
     }
 
     #[test]
+    fn help_subcommand_matches_bare_help() {
+        let cli = parse(&["help"]);
+        match cli.action {
+            Some(Action::Help { verb }) => assert!(verb.is_none(), "got verb={verb:?}"),
+            other => panic!(
+                "expected Action::Help, got {other:?}",
+                other = debug_action(&other)
+            ),
+        }
+    }
+
+    #[test]
+    fn help_subcommand_with_verb_captures_verb_name() {
+        let cli = parse(&["help", "write"]);
+        match cli.action {
+            Some(Action::Help { verb }) => assert_eq!(verb.as_deref(), Some("write")),
+            other => panic!(
+                "expected Action::Help, got {other:?}",
+                other = debug_action(&other)
+            ),
+        }
+    }
+
+    /// Regression guard: `help <unknown>` must NOT fall through to the
+    /// `external_subcommand` catcher; it is always matched by the
+    /// `Action::Help` variant first.
+    #[test]
+    fn help_subcommand_consumes_unknown_verb_rather_than_externalizing() {
+        let cli = parse(&["help", "nonexistent"]);
+        match cli.action {
+            Some(Action::Help { verb }) => assert_eq!(verb.as_deref(), Some("nonexistent")),
+            other => panic!(
+                "expected Action::Help, got {other:?}",
+                other = debug_action(&other)
+            ),
+        }
+    }
+
+    #[test]
     fn create_subcommand_parses_name_file_and_workspace_name() {
         let cli = parse(&["create", "main", "-f", "main.db", "-w", "primary"]);
         match cli.action {
@@ -269,6 +323,7 @@ mod tests {
             Some(Action::Create { .. }) => "Create",
             Some(Action::Delete { .. }) => "Delete",
             Some(Action::Use { .. }) => "Use",
+            Some(Action::Help { .. }) => "Help",
             Some(Action::Verb(_)) => "Verb",
             None => "None",
         }

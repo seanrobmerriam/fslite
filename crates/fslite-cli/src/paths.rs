@@ -20,6 +20,7 @@ pub fn config_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 }
 
 #[cfg(test)]
+#[allow(unsafe_code)] // SAFETY: env-var mutation is serialized by `test_support::lock`.
 mod tests {
     use super::*;
 

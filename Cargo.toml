@@ -13,6 +13,19 @@ members = [
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
+description = "A transport-independent, async virtual filesystem with a SQLite-backed persistent backend, HTTP adapter, and CLI."
+repository = "https://github.com/seanrobmerriam/fslite"
+homepage = "https://fslite.rusty.yachts"
+documentation = "https://docs.rs/fslite-core"
+readme = "README.md"
+keywords = ["filesystem", "sqlite", "virtual-filesystem", "async", "workspace"]
+categories = ["database", "filesystem"]
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
 
 [workspace.dependencies]
 async-trait = "0.1"

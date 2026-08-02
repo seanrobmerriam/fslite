@@ -24,6 +24,14 @@ use registry::Registry;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
+    // `help` is read-only metadata about the CLI itself — dispatch it
+    // before any workspace/executor setup so a user can run
+    // `fslite help` (or `fslite help <verb>`) without configuring
+    // --db/--memory/--server/--workspace first.
+    if let Some(Action::Help { verb }) = &cli.action {
+        return handle_help(verb.as_deref());
+    }
+
     match &cli.action {
         Some(Action::Create {
             name,
@@ -437,5 +445,29 @@ async fn run_repl(executor: &dyn Executor, ctx: &RequestContext, json: bool) {
         }
         print!("fslite> ");
         std::io::stdout().flush().ok();
+    }
+}
+
+/// Print per-verb help for the `fslite` CLI without requiring any
+/// workspace/database connection. Reads from
+/// [`fslite_command::VERB_HELP`], the canonical 28-verb metadata table.
+///
+/// `fslite help`           — list every verb with one-line summary.
+/// `fslite help <verb>`    — print `<verb>`'s summary plus every flag it accepts.
+/// `fslite help bogus`     — print "unknown verb" and exit with code 2.
+fn handle_help(verb: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    match verb {
+        None => {
+            println!("fslite verbs:");
+            fslite_command::print_verb_table();
+            Ok(())
+        }
+        Some(name) => {
+            if fslite_command::print_verb_help(name).is_none() {
+                eprintln!("unknown verb: {name:?} (run `fslite help` for the list)");
+                std::process::exit(2);
+            }
+            Ok(())
+        }
     }
 }

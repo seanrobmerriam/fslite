@@ -1,3 +1,5 @@
+#![allow(unsafe_code)] // SAFETY: every `unsafe` block in this module serializes env-var mutation through `lock()`.
+
 //! Shared test-only helpers for tests that mutate process-global env vars
 //! (`FSLITE_CONFIG_DIR`, `XDG_CONFIG_HOME`).
 //!

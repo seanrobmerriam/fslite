@@ -3,8 +3,8 @@
 //! Each method delegates to the identically named inherent method on
 //! [`SqliteFileSystem`] where one exists (Rust resolves `self.<name>(..)`
 //! calls below to the inherent method, not back into this trait impl).
-//! Operations not yet implemented by an earlier task are `unimplemented!()`
-//! and will be filled in by the task that owns them.
+//! Adding a new trait method? Add the inherent method on `SqliteFileSystem`
+//! in `lib.rs` first; this file's delegate is then a one-line `match` arm.
 
 use async_trait::async_trait;
 use fslite_core::{

@@ -45,6 +45,7 @@ use fslite_core::{
 };
 
 pub use db::ConnectOptions;
+pub use fslite_core::FileSystem;
 pub use workspace::{Workspace, WorkspaceOptions};
 
 /// A persistent, multi-workspace filesystem backed by a single SQLite database.

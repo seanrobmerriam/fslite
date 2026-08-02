@@ -4,14 +4,23 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "HTTP adapter exposing fslite-core's FileSystem trait as a resource-oriented REST API, gated by a pluggable AuthProvider."
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+[lints]
+workspace = true
 
 [dependencies]
 async-trait.workspace = true
 axum.workspace = true
 base64.workspace = true
 bytes.workspace = true
-fslite-core = { path = "../fslite-core" }
-fslite-sqlite = { path = "../fslite-sqlite" }
+fslite-core = { path = "../fslite-core", version = "0.1.0" }
+fslite-sqlite = { path = "../fslite-sqlite", version = "0.1.0" }
 futures.workspace = true
 http-body-util.workspace = true
 serde.workspace = true
@@ -24,7 +33,7 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-fslite-command = { path = "../fslite-command" }
+fslite-command = { path = "../fslite-command", version = "0.1.0" }
 
 [[example]]
 name = "server_and_remote_cli"

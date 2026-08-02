@@ -4,12 +4,21 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+[lints]
+workspace = true
 
 [dependencies]
 async-trait.workspace = true
 base64.workspace = true
 bytes.workspace = true
-fslite-core = { path = "../fslite-core" }
+fslite-core = { path = "../fslite-core", version = "0.1.0" }
 futures.workspace = true
 reqwest.workspace = true
 serde.workspace = true
@@ -17,6 +26,6 @@ serde_json.workspace = true
 
 [dev-dependencies]
 axum.workspace = true
-fslite-server = { path = "../fslite-server" }
-fslite-sqlite = { path = "../fslite-sqlite" }
+fslite-server = { path = "../fslite-server", version = "0.1.0" }
+fslite-sqlite = { path = "../fslite-sqlite", version = "0.1.0" }
 tokio = { workspace = true, features = ["full"] }

@@ -137,6 +137,10 @@ Every verb `fslite-command` understands corresponds one-to-one to a
 `glob`, `find`, `grep`, `changes`, and `batch` — plus `--json` on the CLI for
 machine-readable output.
 
+Run `fslite help` to list every verb with a one-line summary, or
+`fslite help <verb>` for a verb's full flag table (the same metadata is
+also exposed as `reference/cli-verbs` in the docs site).
+
 ## Limits
 
 These are the SQLite backend's *defaults*; per-workspace byte/node/file-size
@@ -146,8 +150,9 @@ quotas are configurable via `WorkspaceOptions` at `create_workspace` time.
   default: 1 GiB). Enforced incrementally as bytes stream in, before they're
   flushed to storage — an oversized write fails partway through, not after
   fully buffering the input.
-- **Workspace byte/node quotas**: `max_bytes` and `max_nodes`, checked
-  against active + trashed logical bytes and node counts.
+- **Workspace byte/node quotas**: `max_bytes` (workspace default: 10 GiB)
+  and `max_nodes` (workspace default: 1,000,000), checked against active
+  + trashed logical bytes and node counts.
 - **Custom attributes**: a 256-byte key, a 4096-byte value, and 64
   attributes per node. Attribute values are arbitrary bytes; since
   `Node::attributes` is a JSON map, each value is base64url-encoded into a

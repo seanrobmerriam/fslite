@@ -4,12 +4,21 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+[lints]
+workspace = true
 
 [dependencies]
 async-trait.workspace = true
 base64.workspace = true
 bytes.workspace = true
-fslite-core = { path = "../fslite-core" }
+fslite-core = { path = "../fslite-core", version = "0.1.0" }
 futures.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
@@ -20,7 +29,7 @@ tokio-rusqlite.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-fslite-conformance = { path = "../fslite-conformance" }
+fslite-conformance = { path = "../fslite-conformance", version = "0.1.0" }
 tempfile.workspace = true
 
 [[example]]

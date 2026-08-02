@@ -2,3 +2,12 @@ target/
 docs/
 .env
 .superpowers/
+
+# Local SQLite artifacts left by examples/batch.rs and similar
+fslite.db
+fslite.db-shm
+fslite.db-wal
+
+# Session-local planning artifacts (handoff, plan, research).
+# Kept on disk but not committed from this repo.
+thoughts/

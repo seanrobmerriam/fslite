@@ -4,6 +4,15 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Command-line client for fslite: manages named filesystems/workspaces and runs fslite-command verbs against a local database, in-memory database, or remote fslite-server."
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+[lints]
+workspace = true
 
 [[bin]]
 name = "fslite"
@@ -11,14 +20,14 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-fslite-command = { path = "../fslite-command" }
-fslite-core = { path = "../fslite-core" }
-fslite-sqlite = { path = "../fslite-sqlite" }
+fslite-command = { path = "../fslite-command", version = "0.1.0" }
+fslite-core = { path = "../fslite-core", version = "0.1.0" }
+fslite-sqlite = { path = "../fslite-sqlite", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["full"] }
 
 [dev-dependencies]
 axum.workspace = true
-fslite-server = { path = "../fslite-server" }
+fslite-server = { path = "../fslite-server", version = "0.1.0" }
 tempfile.workspace = true
