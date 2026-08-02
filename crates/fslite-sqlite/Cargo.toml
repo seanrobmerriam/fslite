@@ -29,7 +29,7 @@ tokio-rusqlite.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-fslite-conformance = { path = "../fslite-conformance", version = "0.1.0" }
+fslite-conformance = { path = "../fslite-conformance" }
 tempfile.workspace = true
 
 [[example]]

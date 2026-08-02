@@ -29,5 +29,5 @@ tokio = { workspace = true, features = ["full"] }
 
 [dev-dependencies]
 axum.workspace = true
-fslite-server = { path = "../fslite-server", version = "0.1.0" }
+fslite-server = { path = "../fslite-server" }
 tempfile.workspace = true

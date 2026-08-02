@@ -12,13 +12,21 @@ six crates at the same version.
    list of changes per crate.
 3. Bump versions in every `crates/*/Cargo.toml` to the new version.
 4. Run `cargo publish --dry-run -p <crate>` for each crate in
-   dependency order:
-   1. `fslite-core`
-   2. `fslite-sqlite` (depends on `fslite-core`)
-   3. `fslite-conformance` (depends on `fslite-core`)
-   4. `fslite-server` (depends on `fslite-core`, `fslite-sqlite`)
-   5. `fslite-command` (depends on `fslite-core`)
-   6. `fslite-cli` (depends on `fslite-command`, `fslite-core`, `fslite-sqlite`)
+   dependency order. **Internal-crate dev-dependencies are path-only**
+   (no `version = "..."`) to break the `fslite-server` ↔ `fslite-command`
+   cycle and to keep `fslite-sqlite` from gating on `fslite-conformance`:
+   1. `fslite-core`        (no internal prod- or dev-deps)
+   2. `fslite-conformance` (prod-deps: `fslite-core`)
+   3. `fslite-sqlite`      (prod-deps: `fslite-core`)
+   4. `fslite-command`     (prod-deps: `fslite-core`)
+   5. `fslite-server`      (prod-deps: `fslite-core`, `fslite-sqlite`)
+   6. `fslite-cli`         (prod-deps: `fslite-command`, `fslite-core`, `fslite-sqlite`)
+
+   `fslite-conformance`, `fslite-sqlite`, and `fslite-command` may be
+   published in any relative order (they all only prod-dep on
+   `fslite-core`). `fslite-server` requires `fslite-sqlite` to already
+   be on crates.io; `fslite-cli` requires both `fslite-command` and
+   `fslite-sqlite` to already be on crates.io.
 5. Commit the version bumps and CHANGELOG entry.
 6. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z"`.
 7. Push the tag: `git push origin vX.Y.Z`.

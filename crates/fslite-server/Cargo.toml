@@ -33,7 +33,7 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-fslite-command = { path = "../fslite-command", version = "0.1.0" }
+fslite-command = { path = "../fslite-command" }
 
 [[example]]
 name = "server_and_remote_cli"
