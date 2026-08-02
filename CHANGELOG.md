@@ -46,5 +46,6 @@ with the 0.x carve-out described in `SEMVER.md`.
   stability commitment.
 - `fslite-server`'s shipped `main.rs` is reference wiring only; it
   opens an in-memory database on every start and reads `FSLITE_TOKENS`
-  once at startup. A real deployment needs its own `main` (see
-  `/docs/guides/auth-provider` in the Nextra docs site).
+  once at startup. A real deployment needs its own `main` (see the
+  [Auth provider guide](https://docs.fslite.rusty.yachts/guides/auth-provider)
+  on the project docs site).

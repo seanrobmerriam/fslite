@@ -4,6 +4,10 @@ A transport-independent, async filesystem interface; a persistent,
 multi-workspace SQLite implementation suitable for direct embedding; and an
 HTTP server, typed command codec, and CLI built on top of it.
 
+**Docs**: [guides and concepts](https://docs.fslite.rusty.yachts) ·
+[API reference on docs.rs](https://docs.rs/fslite-core) ·
+[project homepage](https://fslite.rusty.yachts)
+
 ## Workspace layout
 
 | Crate | Purpose |
