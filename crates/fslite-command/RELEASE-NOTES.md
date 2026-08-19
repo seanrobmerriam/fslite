@@ -7,6 +7,13 @@ operations across a transport. Verbs are stable; per-verb `*Options`
 shape is stable. The `LocalExecutor` and `RemoteExecutor` interfaces
 are stable. New sanitizers may be added without bumping the major.
 
+## 0.1.1
+
+CLI virtual-path operands now accept workspace-root-relative input as well as
+absolute paths. Relative glob patterns are rooted and normalized consistently,
+while `VirtualPath`, command serialization, and relative symlink targets keep
+their existing invariants.
+
 ## 0.1.0
 
 Initial release. Typed `Command` codec (one variant per `FileSystem`
