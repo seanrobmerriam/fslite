@@ -1,6 +1,6 @@
 [package]
 name = "fslite"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -23,7 +23,7 @@ atomic-write-file.workspace = true
 clap.workspace = true
 directories.workspace = true
 fs2.workspace = true
-fslite-command = { path = "../fslite-command", version = "0.1.0" }
+fslite-command = { path = "../fslite-command", version = "0.1.1" }
 fslite-core = { path = "../fslite-core", version = "0.1.0" }
 fslite-sqlite = { path = "../fslite-sqlite", version = "0.1.0" }
 serde.workspace = true
