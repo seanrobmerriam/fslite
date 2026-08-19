@@ -531,6 +531,24 @@ fn glob_takes_a_pattern() {
 }
 
 #[test]
+fn glob_patterns_resolve_from_the_workspace_root() {
+    for (input, expected) in [
+        ("glob 'docs/*.md'", "/docs/*.md"),
+        ("glob './docs/**/*.md'", "/docs/**/*.md"),
+        ("glob '/docs/*.md'", "/docs/*.md"),
+        ("glob '../../docs/*.md'", "/docs/*.md"),
+    ] {
+        assert_eq!(
+            parse(input).unwrap(),
+            Command::Glob {
+                pattern: expected.to_string(),
+                page: PageRequest::default(),
+            }
+        );
+    }
+}
+
+#[test]
 fn glob_rejects_a_malformed_limit_instead_of_silently_dropping_it() {
     let err = parse("glob /*.txt --limit=abc").unwrap_err();
     assert!(matches!(
