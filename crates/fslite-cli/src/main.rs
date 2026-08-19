@@ -48,6 +48,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => {}
     }
 
+    let eligible_for_bootstrap = matches!(&cli.action, Some(Action::Verb(_)))
+        && cli.db.is_none()
+        && !cli.memory
+        && cli.server.is_none()
+        && cli.filesystem.is_none()
+        && !cli.create_workspace;
+
+    if eligible_for_bootstrap {
+        let outcome = bootstrap::ensure_default().await?;
+        if outcome.created {
+            eprintln!("{}", bootstrap::NOTICE);
+        }
+    }
+
     let (target, filesystem_source) = resolve_target(&cli)?;
 
     if cli.create_workspace {

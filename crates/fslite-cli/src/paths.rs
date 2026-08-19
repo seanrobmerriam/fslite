@@ -22,7 +22,6 @@ pub fn config_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
 /// Resolves the directory containing persistent databases created by the CLI.
 /// Unlike registry/context metadata, database files belong in the platform's
 /// local application-data directory.
-#[allow(dead_code)] // Used by bootstrap, wired into dispatch next.
 pub fn data_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     if let Ok(dir) = std::env::var("FSLITE_DATA_DIR") {
         return Ok(PathBuf::from(dir));

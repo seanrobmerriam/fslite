@@ -1,6 +1,4 @@
 //! First-run default database/workspace initialization.
-#![allow(dead_code)] // Wired into command dispatch in the next plan task.
-
 use std::path::Path;
 
 use fs2::FileExt;

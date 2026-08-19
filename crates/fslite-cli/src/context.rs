@@ -21,7 +21,13 @@ impl Context {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let path = Self::path()?;
         match std::fs::read_to_string(&path) {
-            Ok(contents) => Ok(serde_json::from_str(&contents)?),
+            Ok(contents) => serde_json::from_str(&contents).map_err(|error| {
+                format!(
+                    "failed to parse active context at {}: {error}; repair or restore this file",
+                    path.display()
+                )
+                .into()
+            }),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Context::default()),
             Err(err) => Err(err.into()),
         }

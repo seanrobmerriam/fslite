@@ -28,7 +28,13 @@ impl Registry {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let path = Self::path()?;
         match std::fs::read_to_string(&path) {
-            Ok(contents) => Ok(serde_json::from_str(&contents)?),
+            Ok(contents) => serde_json::from_str(&contents).map_err(|error| {
+                format!(
+                    "failed to parse registry at {}: {error}; repair or restore this file",
+                    path.display()
+                )
+                .into()
+            }),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Registry::default()),
             Err(err) => Err(err.into()),
         }
@@ -43,7 +49,6 @@ impl Registry {
         self.filesystems.contains_key(name)
     }
 
-    #[allow(dead_code)] // Used by bootstrap, wired into dispatch next.
     pub fn is_empty(&self) -> bool {
         self.filesystems.is_empty() && self.workspaces.is_empty()
     }
