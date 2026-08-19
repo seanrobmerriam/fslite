@@ -53,22 +53,3 @@ pub fn with_temp_config_dir<T>(f: impl FnOnce() -> T) -> T {
     }
     result
 }
-
-/// Runs `f` with isolated configuration and data roots. The roots live for
-/// the duration of the callback and are returned as callback arguments.
-#[allow(dead_code)] // Used by the bootstrap tests added in the next plan task.
-pub fn with_temp_dirs<T>(f: impl FnOnce(&std::path::Path, &std::path::Path) -> T) -> T {
-    let _guard = lock();
-    let config = tempfile::tempdir().unwrap();
-    let data = tempfile::tempdir().unwrap();
-    unsafe {
-        std::env::set_var("FSLITE_CONFIG_DIR", config.path());
-        std::env::set_var("FSLITE_DATA_DIR", data.path());
-    }
-    let result = f(config.path(), data.path());
-    unsafe {
-        std::env::remove_var("FSLITE_CONFIG_DIR");
-        std::env::remove_var("FSLITE_DATA_DIR");
-    }
-    result
-}

@@ -43,6 +43,11 @@ impl Registry {
         self.filesystems.contains_key(name)
     }
 
+    #[allow(dead_code)] // Used by bootstrap, wired into dispatch next.
+    pub fn is_empty(&self) -> bool {
+        self.filesystems.is_empty() && self.workspaces.is_empty()
+    }
+
     pub fn filesystem_path(&self, name: &str) -> Option<&Path> {
         self.filesystems.get(name).map(PathBuf::as_path)
     }
