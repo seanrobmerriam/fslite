@@ -142,10 +142,7 @@ fn path_help_does_not_require_absolute_cli_input() {
         .unwrap();
     assert!(mkdir.summary.contains("workspace-root-relative"));
 
-    let glob = VERB_HELP
-        .iter()
-        .find(|entry| entry.name == "glob")
-        .unwrap();
+    let glob = VERB_HELP.iter().find(|entry| entry.name == "glob").unwrap();
     assert!(glob.summary.contains("docs/*.txt"));
     assert!(!glob.summary.contains("absolute paths"));
 }
