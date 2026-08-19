@@ -151,6 +151,74 @@ fn mkdir_parents_and_exist_ok_flags() {
 }
 
 #[test]
+fn relative_virtual_paths_resolve_from_the_workspace_root() {
+    assert_eq!(
+        parse("mkdir docs --parents").unwrap(),
+        Command::Mkdir {
+            path: path("/docs"),
+            options: CreateOptions::default().parents(true),
+        }
+    );
+    assert_eq!(
+        parse("cat ./docs/readme.md").unwrap(),
+        Command::Read {
+            path: path("/docs/readme.md"),
+            options: ReadOptions::default(),
+        }
+    );
+
+    match parse("cp source.txt docs/copy.txt").unwrap() {
+        Command::Copy { from, to, .. } => {
+            assert_eq!(from, path("/source.txt"));
+            assert_eq!(to, path("/docs/copy.txt"));
+        }
+        other => panic!("expected Copy, got {other:?}"),
+    }
+    match parse("mv docs/copy.txt archive/copy.txt").unwrap() {
+        Command::Move { from, to, .. } => {
+            assert_eq!(from, path("/docs/copy.txt"));
+            assert_eq!(to, path("/archive/copy.txt"));
+        }
+        other => panic!("expected Move, got {other:?}"),
+    }
+
+    let trash = fslite_core::TrashId::new();
+    match parse(&format!("restore {trash} --to=restored/file.txt")).unwrap() {
+        Command::Restore { destination, .. } => {
+            assert_eq!(destination, Some(path("/restored/file.txt")));
+        }
+        other => panic!("expected Restore, got {other:?}"),
+    }
+
+    assert_eq!(
+        parse("find docs --kind=file").unwrap(),
+        Command::Find {
+            query: FindQuery::default()
+                .root(path("/docs"))
+                .kind(Some(NodeKind::File)),
+            page: PageRequest::default(),
+        }
+    );
+    assert_eq!(
+        parse("grep docs needle").unwrap(),
+        Command::SearchContent {
+            query: ContentQuery::default()
+                .root(path("/docs"))
+                .needle(b"needle".to_vec()),
+            page: PageRequest::default(),
+        }
+    );
+
+    match parse("ln ../target docs/link").unwrap() {
+        Command::Symlink { target, link, .. } => {
+            assert_eq!(target, LinkTarget::parse("../target").unwrap());
+            assert_eq!(link, path("/docs/link"));
+        }
+        other => panic!("expected Symlink, got {other:?}"),
+    }
+}
+
+#[test]
 fn cat_defaults_to_the_full_file() {
     assert_eq!(
         parse("cat /a.txt").unwrap(),
@@ -460,6 +528,24 @@ fn glob_takes_a_pattern() {
             page: Default::default()
         }
     );
+}
+
+#[test]
+fn glob_patterns_resolve_from_the_workspace_root() {
+    for (input, expected) in [
+        ("glob 'docs/*.md'", "/docs/*.md"),
+        ("glob './docs/**/*.md'", "/docs/**/*.md"),
+        ("glob '/docs/*.md'", "/docs/*.md"),
+        ("glob '../../docs/*.md'", "/docs/*.md"),
+    ] {
+        assert_eq!(
+            parse(input).unwrap(),
+            Command::Glob {
+                pattern: expected.to_string(),
+                page: PageRequest::default(),
+            }
+        );
+    }
 }
 
 #[test]

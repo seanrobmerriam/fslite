@@ -24,7 +24,8 @@ use clap::{Parser, Subcommand};
     // content as the `--help` flag). Disabling that subcommand leaves
     // `--help`/`-h` working (which users reach for by default) while
     // letting `fslite help [<verb>]` print the per-verb table.
-    disable_help_subcommand = true
+    disable_help_subcommand = true,
+    after_long_help = "Virtual paths may be absolute (/docs/file.txt) or relative to the workspace root (docs/file.txt)."
 )]
 pub struct Cli {
     /// Path to a local SQLite database (local mode).

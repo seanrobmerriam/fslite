@@ -75,7 +75,7 @@ pub const VERB_HELP: &[VerbHelp] = &[
     },
     VerbHelp {
         name: "glob",
-        summary: "Match absolute paths by shape (e.g. `/logs/*.txt`).",
+        summary: "Match path shapes from the workspace root (e.g. `docs/*.txt`).",
         flags: &["cursor", "limit"],
     },
     VerbHelp {
@@ -95,7 +95,7 @@ pub const VERB_HELP: &[VerbHelp] = &[
     },
     VerbHelp {
         name: "mkdir",
-        summary: "Create a directory.",
+        summary: "Create a directory (paths may be workspace-root-relative).",
         flags: &["parents", "exist-ok", "expected-revision"],
     },
     VerbHelp {

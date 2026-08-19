@@ -14,10 +14,14 @@ Install the command and use a persistent SQLite-backed filesystem immediately:
 
 ```console
 cargo install fslite
-fslite mkdir /docs
-fslite write /docs/hello.txt --text=hello
-fslite cat /docs/hello.txt
+fslite mkdir docs
+fslite write docs/hello.txt --text=hello
+fslite cat docs/hello.txt
 ```
+
+CLI paths may be absolute (`/docs/hello.txt`) or relative to the active
+workspace root (`docs/hello.txt`). fslite has no virtual current-directory
+state, so relative paths always start at that workspace root.
 
 On the first filesystem command, fslite writes this one-time notice to stderr:
 
@@ -104,11 +108,11 @@ every invocation:
 fslite create filesystem-main -f fsmain.db -w workspace-main
 fslite use filesystem-main -w workspace-main
 
-fslite mkdir /docs
-fslite touch /docs/file.md
-fslite write /docs/file.md --text=hello
-fslite cat /docs/file.md
-fslite rm /docs/file.md
+fslite mkdir docs
+fslite touch docs/file.md
+fslite write docs/file.md --text=hello
+fslite cat docs/file.md
+fslite rm docs/file.md
 
 fslite delete filesystem-main -y   # permanently deletes fsmain.db
 ```

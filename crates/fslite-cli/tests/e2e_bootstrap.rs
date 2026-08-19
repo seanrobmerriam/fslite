@@ -29,9 +29,9 @@ impl Fixture {
 }
 
 #[test]
-fn first_verb_bootstraps_once_and_keeps_stdout_clean() {
+fn first_relative_verb_bootstraps_once_and_supports_a_complete_workflow() {
     let fixture = Fixture::new();
-    let first = fixture.cli().args(["mkdir", "/docs"]).output().unwrap();
+    let first = fixture.cli().args(["mkdir", "docs"]).output().unwrap();
     assert!(
         first.status.success(),
         "stderr: {}",
@@ -41,10 +41,22 @@ fn first_verb_bootstraps_once_and_keeps_stdout_clean() {
     assert!(!String::from_utf8(first.stdout).unwrap().contains(NOTICE));
     assert!(fixture.default_db().exists());
 
-    let second = fixture.cli().args(["ls", "/"]).output().unwrap();
-    assert!(second.status.success());
-    assert!(second.stderr.is_empty());
-    assert!(String::from_utf8(second.stdout).unwrap().contains("docs"));
+    let write = fixture
+        .cli()
+        .args(["write", "docs/hello.txt", "--text=hello"])
+        .output()
+        .unwrap();
+    assert!(write.status.success());
+    assert!(write.stderr.is_empty());
+
+    let cat = fixture
+        .cli()
+        .args(["cat", "./docs/hello.txt"])
+        .output()
+        .unwrap();
+    assert!(cat.status.success());
+    assert_eq!(String::from_utf8(cat.stdout).unwrap().trim(), "hello");
+    assert!(cat.stderr.is_empty());
 }
 
 #[test]

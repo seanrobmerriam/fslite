@@ -166,11 +166,27 @@ fn parse_path(
     name: &'static str,
     raw: &str,
 ) -> Result<VirtualPath, ParseError> {
-    VirtualPath::parse(raw).map_err(|e| ParseError::InvalidArgument {
+    let parsed = if raw.starts_with('/') {
+        VirtualPath::parse(raw)
+    } else {
+        VirtualPath::root().join(raw)
+    };
+    parsed.map_err(|e| ParseError::InvalidArgument {
         verb,
         name,
         reason: e.message().to_string(),
     })
+}
+
+fn parse_glob_pattern(raw: &str) -> Result<String, ParseError> {
+    VirtualPath::root()
+        .join(raw.trim_start_matches('/'))
+        .map(|pattern| pattern.as_str().to_string())
+        .map_err(|e| ParseError::InvalidArgument {
+            verb: "glob",
+            name: "pattern",
+            reason: e.message().to_string(),
+        })
 }
 
 /// Parses one line of `fslite-command` grammar into a [`Command`].
@@ -549,7 +565,7 @@ pub fn parse(line: &str) -> Result<Command, ParseError> {
         "glob" => {
             args.check_known_flags("glob", &["cursor", "limit"])?;
             args.check_positional_arity("glob", 1)?;
-            let pattern = args.positional("glob", 0, "pattern")?.to_string();
+            let pattern = parse_glob_pattern(args.positional("glob", 0, "pattern")?)?;
             Ok(Command::Glob {
                 pattern,
                 page: args.page("glob")?,

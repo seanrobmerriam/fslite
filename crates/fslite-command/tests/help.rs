@@ -133,3 +133,16 @@ fn verb_count_is_stable() {
     // metadata table is loudly visible.
     assert_eq!(VERB_HELP.len(), 28);
 }
+
+#[test]
+fn path_help_does_not_require_absolute_cli_input() {
+    let mkdir = VERB_HELP
+        .iter()
+        .find(|entry| entry.name == "mkdir")
+        .unwrap();
+    assert!(mkdir.summary.contains("workspace-root-relative"));
+
+    let glob = VERB_HELP.iter().find(|entry| entry.name == "glob").unwrap();
+    assert!(glob.summary.contains("docs/*.txt"));
+    assert!(!glob.summary.contains("absolute paths"));
+}
