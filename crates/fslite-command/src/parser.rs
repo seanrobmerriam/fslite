@@ -166,7 +166,12 @@ fn parse_path(
     name: &'static str,
     raw: &str,
 ) -> Result<VirtualPath, ParseError> {
-    VirtualPath::parse(raw).map_err(|e| ParseError::InvalidArgument {
+    let parsed = if raw.starts_with('/') {
+        VirtualPath::parse(raw)
+    } else {
+        VirtualPath::root().join(raw)
+    };
+    parsed.map_err(|e| ParseError::InvalidArgument {
         verb,
         name,
         reason: e.message().to_string(),

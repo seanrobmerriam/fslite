@@ -110,6 +110,14 @@ fn path_traversal_attempts_are_clamped_to_the_workspace_root_not_rejected_or_esc
     }
 }
 
+#[test]
+fn relative_path_traversal_is_clamped_to_the_workspace_root() {
+    match parse("stat ../../../../etc/passwd").unwrap() {
+        Command::Stat { path, .. } => assert_eq!(path.as_str(), "/etc/passwd"),
+        other => panic!("expected Stat, got {other:?}"),
+    }
+}
+
 /// The `stat` test above proves containment for a single-path verb; this
 /// extends the same proof across every argument *position* that carries a
 /// path (a two-path verb's `from`/`to`, and a symlink's absolute target),
