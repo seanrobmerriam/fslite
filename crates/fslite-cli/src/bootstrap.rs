@@ -28,6 +28,7 @@ pub async fn ensure_default() -> Result<BootstrapOutcome, Box<dyn std::error::Er
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(config.join("bootstrap.lock"))?;
     lock.lock_exclusive()?;
 
