@@ -29,12 +29,7 @@ impl Context {
 
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let path = Self::path()?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
-        Ok(())
+        crate::persistence::write_json(&path, self)
     }
 
     /// Clears the persisted context if it currently points at `filesystem`

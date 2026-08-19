@@ -12,6 +12,7 @@ use fslite_sqlite::SqliteFileSystem;
 mod cli;
 mod context;
 mod paths;
+mod persistence;
 mod registry;
 #[cfg(test)]
 mod test_support;
