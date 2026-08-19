@@ -9,9 +9,11 @@ use fslite_command::{
 use fslite_core::{FileSystem, RequestContext, WorkspaceId};
 use fslite_sqlite::SqliteFileSystem;
 
+mod bootstrap;
 mod cli;
 mod context;
 mod paths;
+mod persistence;
 mod registry;
 #[cfg(test)]
 mod test_support;
@@ -44,6 +46,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             workspace_name,
         }) => return use_context(name, workspace_name),
         _ => {}
+    }
+
+    let eligible_for_bootstrap = matches!(&cli.action, Some(Action::Verb(_)))
+        && cli.db.is_none()
+        && !cli.memory
+        && cli.server.is_none()
+        && cli.filesystem.is_none()
+        && !cli.create_workspace;
+
+    if eligible_for_bootstrap {
+        let outcome = bootstrap::ensure_default().await?;
+        if outcome.created {
+            eprintln!("{}", bootstrap::NOTICE);
+        }
     }
 
     let (target, filesystem_source) = resolve_target(&cli)?;

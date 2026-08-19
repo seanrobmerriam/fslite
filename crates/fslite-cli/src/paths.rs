@@ -19,6 +19,18 @@ pub fn config_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(PathBuf::from(home).join(".config").join("fslite"))
 }
 
+/// Resolves the directory containing persistent databases created by the CLI.
+/// Unlike registry/context metadata, database files belong in the platform's
+/// local application-data directory.
+pub fn data_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Ok(dir) = std::env::var("FSLITE_DATA_DIR") {
+        return Ok(PathBuf::from(dir));
+    }
+    let project = directories::ProjectDirs::from("", "", "fslite")
+        .ok_or("cannot resolve a user data directory; set FSLITE_DATA_DIR")?;
+    Ok(project.data_local_dir().to_path_buf())
+}
+
 #[cfg(test)]
 #[allow(unsafe_code)] // SAFETY: env-var mutation is serialized by `test_support::lock`.
 mod tests {
@@ -55,5 +67,33 @@ mod tests {
             std::env::remove_var("XDG_CONFIG_HOME");
         }
         assert_eq!(dir, PathBuf::from("/tmp/fslite-xdg-test/fslite"));
+    }
+
+    #[test]
+    fn fslite_data_dir_env_var_wins() {
+        let _guard = crate::test_support::lock();
+        unsafe {
+            std::env::set_var("FSLITE_DATA_DIR", "/tmp/fslite-test-data");
+        }
+        let dir = data_dir().unwrap();
+        unsafe {
+            std::env::remove_var("FSLITE_DATA_DIR");
+        }
+        assert_eq!(dir, PathBuf::from("/tmp/fslite-test-data"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn xdg_data_home_is_used_when_set() {
+        let _guard = crate::test_support::lock();
+        unsafe {
+            std::env::remove_var("FSLITE_DATA_DIR");
+            std::env::set_var("XDG_DATA_HOME", "/tmp/fslite-xdg-data-test");
+        }
+        let dir = data_dir().unwrap();
+        unsafe {
+            std::env::remove_var("XDG_DATA_HOME");
+        }
+        assert_eq!(dir, PathBuf::from("/tmp/fslite-xdg-data-test/fslite"));
     }
 }

@@ -20,12 +20,12 @@ six crates at the same version.
    3. `fslite-sqlite`      (prod-deps: `fslite-core`)
    4. `fslite-command`     (prod-deps: `fslite-core`)
    5. `fslite-server`      (prod-deps: `fslite-core`, `fslite-sqlite`)
-   6. `fslite-cli`         (prod-deps: `fslite-command`, `fslite-core`, `fslite-sqlite`)
+   6. `fslite`             (prod-deps: `fslite-command`, `fslite-core`, `fslite-sqlite`)
 
    `fslite-conformance`, `fslite-sqlite`, and `fslite-command` may be
    published in any relative order (they all only prod-dep on
    `fslite-core`). `fslite-server` requires `fslite-sqlite` to already
-   be on crates.io; `fslite-cli` requires both `fslite-command` and
+   be on crates.io; `fslite` requires both `fslite-command` and
    `fslite-sqlite` to already be on crates.io.
 5. Commit the version bumps and CHANGELOG entry.
 6. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z"`.
@@ -42,4 +42,4 @@ After publish, verify docs.rs renders every crate correctly:
 - https://docs.rs/fslite-conformance
 - https://docs.rs/fslite-server
 - https://docs.rs/fslite-command
-- https://docs.rs/fslite-cli
+- https://docs.rs/fslite

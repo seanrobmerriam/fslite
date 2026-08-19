@@ -131,6 +131,11 @@ pub enum Action {
 mod tests {
     use super::*;
 
+    #[test]
+    fn cargo_package_matches_the_installed_command_name() {
+        assert_eq!(env!("CARGO_PKG_NAME"), "fslite");
+    }
+
     fn parse(args: &[&str]) -> Cli {
         let mut full = vec!["fslite"];
         full.extend_from_slice(args);

@@ -2,7 +2,7 @@
 //! workspace names to their underlying SQLite file paths and workspace ids.
 //! `fslite-core`/`fslite-sqlite` have no concept of a name — a `Workspace`
 //! is identified purely by `WorkspaceId` (a UUID) — so this registry exists
-//! entirely client-side, in `fslite-cli`, and is invisible to every other
+//! entirely client-side, in `fslite`, and is invisible to every other
 //! consumer of the workspace (a remote `fslite-server`, another client,
 //! `fslite-command`'s own executors).
 
@@ -28,7 +28,13 @@ impl Registry {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let path = Self::path()?;
         match std::fs::read_to_string(&path) {
-            Ok(contents) => Ok(serde_json::from_str(&contents)?),
+            Ok(contents) => serde_json::from_str(&contents).map_err(|error| {
+                format!(
+                    "failed to parse registry at {}: {error}; repair or restore this file",
+                    path.display()
+                )
+                .into()
+            }),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Registry::default()),
             Err(err) => Err(err.into()),
         }
@@ -36,16 +42,15 @@ impl Registry {
 
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let path = Self::path()?;
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, json)?;
-        Ok(())
+        crate::persistence::write_json(&path, self)
     }
 
     pub fn filesystem_exists(&self, name: &str) -> bool {
         self.filesystems.contains_key(name)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.filesystems.is_empty() && self.workspaces.is_empty()
     }
 
     pub fn filesystem_path(&self, name: &str) -> Option<&Path> {

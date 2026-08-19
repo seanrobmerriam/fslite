@@ -6,6 +6,7 @@ use std::process::Command;
 struct Fixture {
     config_dir: tempfile::TempDir,
     db_dir: tempfile::TempDir,
+    data_dir: tempfile::TempDir,
 }
 
 impl Fixture {
@@ -13,12 +14,14 @@ impl Fixture {
         Self {
             config_dir: tempfile::tempdir().unwrap(),
             db_dir: tempfile::tempdir().unwrap(),
+            data_dir: tempfile::tempdir().unwrap(),
         }
     }
 
     fn cli(&self) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_fslite"));
         command.env("FSLITE_CONFIG_DIR", self.config_dir.path());
+        command.env("FSLITE_DATA_DIR", self.data_dir.path());
         command
     }
 
@@ -184,7 +187,7 @@ fn delete_yes_skips_confirmation_and_removes_the_file() {
 }
 
 #[test]
-fn delete_clears_a_matching_context_so_later_verbs_fail_clearly() {
+fn delete_clears_a_matching_context_so_later_verbs_create_a_fresh_default() {
     let fixture = Fixture::new();
     let db_path = fixture.db_path("main.db");
     fixture
@@ -211,12 +214,14 @@ fn delete_clears_a_matching_context_so_later_verbs_fail_clearly() {
         .unwrap();
 
     let mkdir = fixture.cli().args(["mkdir", "/docs"]).output().unwrap();
-    assert!(!mkdir.status.success());
+    assert!(mkdir.status.success());
     assert!(
-        String::from_utf8_lossy(&mkdir.stderr).contains("no filesystem selected"),
+        String::from_utf8_lossy(&mkdir.stderr)
+            .contains("No database or workspace found, creating default database and workspace"),
         "stderr: {}",
         String::from_utf8_lossy(&mkdir.stderr)
     );
+    assert!(fixture.data_dir.path().join("fslite.db").exists());
 }
 
 #[test]
