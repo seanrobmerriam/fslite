@@ -8,6 +8,30 @@ HTTP server, typed command codec, and CLI built on top of it.
 [API reference on docs.rs](https://docs.rs/fslite-core) ·
 [project homepage](https://fslite.rusty.yachts)
 
+## Quick start
+
+Install the command and use a persistent SQLite-backed filesystem immediately:
+
+```console
+cargo install fslite
+fslite mkdir /docs
+fslite write /docs/hello.txt --text=hello
+fslite cat /docs/hello.txt
+```
+
+On the first filesystem command, fslite writes this one-time notice to stderr:
+
+```text
+No database or workspace found, creating default database and workspace
+```
+
+It creates a filesystem and workspace both named `default`, stores `fslite.db`
+in the operating system's local application-data directory, and silently
+reuses them afterward. Set `FSLITE_DATA_DIR` to choose a different data
+directory. The existing `FSLITE_CONFIG_DIR` controls registry/context files.
+Explicit `--db`, `--memory`, `--server`, `--filesystem`, and
+`--create-workspace` workflows bypass automatic initialization.
+
 ## Workspace layout
 
 | Crate | Purpose |
@@ -17,9 +41,9 @@ HTTP server, typed command codec, and CLI built on top of it.
 | [`fslite-conformance`](crates/fslite-conformance) | A backend-agnostic contract test suite. Any `FileSystem` implementation can prove basic compliance by implementing `ConformanceFactory` and calling `run_conformance`. |
 | [`fslite-server`](crates/fslite-server) | An `axum`-based HTTP adapter exposing `FileSystem` as a resource-oriented API: nodes, directories, trash, content (including ranged reads), search, batch, and workspace-admin routes, gated behind a pluggable `AuthProvider`. |
 | [`fslite-command`](crates/fslite-command) | A typed `Command` codec (one variant per `FileSystem` operation), a constrained shell-like lexer/parser, and local/remote executors that drive either an in-process `FileSystem` or a running `fslite-server` over HTTP. |
-| [`fslite-cli`](crates/fslite-cli) | `fslite-cli`: a command-line client built on `fslite-command`, usable against a local SQLite database, an in-memory database, or a remote `fslite-server`, in one-shot or REPL mode. |
+| [`fslite`](crates/fslite-cli) | `fslite`: a command-line client built on `fslite-command`, usable against a local SQLite database, an in-memory database, or a remote `fslite-server`, in one-shot or REPL mode. |
 
-## Quick start
+## Embedded Rust quick start
 
 ```rust
 use fslite_core::{RequestContext, VirtualPath, WriteSource};
@@ -57,18 +81,18 @@ setup) and runnable with `cargo run --example <name>`:
 | [`trash_lifecycle`](examples/trash_lifecycle.rs) | `trash` hides a subtree without touching its data, `restore` brings it back (optionally under a new name), and `purge` is the only way its content is actually reclaimed. |
 | [`workspace_isolation`](examples/workspace_isolation.rs) | Two workspaces in one database hold the same path independently, with no cross-workspace visibility — including a rejected cross-workspace pagination cursor. |
 | [`search_and_glob`](examples/search_and_glob.rs) | `glob` (path-shape matching), `find` (bounded metadata predicates), and `search_content` (literal byte matches inside files). |
-| [`server_and_remote_cli`](examples/server_and_remote_cli.rs) | Runs `fslite-server`'s HTTP API in-process and drives it with `fslite-command`'s `RemoteExecutor` — the same client `fslite-cli --server` uses — over a real TCP connection. |
+| [`server_and_remote_cli`](examples/server_and_remote_cli.rs) | Runs `fslite-server`'s HTTP API in-process and drives it with `fslite-command`'s `RemoteExecutor` — the same client `fslite --server` uses — over a real TCP connection. |
 
 ## CLI and server
 
-`fslite-cli` can talk to a local database file, a private in-memory one, or a
+`fslite` can talk to a local database file, a private in-memory one, or a
 remote `fslite-server` over HTTP — the same verb syntax works in all three
 modes. Flag values use `--name=value` (the lexer does not treat a following
 bare word as a flag's value). `--memory` opens a fresh, unshared database for
 that single process only, so it's suited to one-off experiments or scripts
 that create a workspace and use it within the same invocation; use
 `--db <path>` whenever a workspace needs to be visible across separate
-`fslite-cli` invocations:
+`fslite` invocations:
 
 For everyday interactive use, `fslite` also supports named filesystems and
 workspaces, persisted in a small local registry
@@ -103,17 +127,17 @@ for scripting against a database you don't want registered under a name.
 # workspace's id as its only line of output (after cargo's own build/run
 # noise) — capture it with `-q` to suppress that noise and keep the
 # variable clean:
-WORKSPACE=$(cargo run -q -p fslite-cli -- --db ./fslite.db --create-workspace)
-cargo run -p fslite-cli -- --db ./fslite.db --workspace "$WORKSPACE" mkdir /docs
-cargo run -p fslite-cli -- --db ./fslite.db --workspace "$WORKSPACE" write /docs/hello.txt --text=hi
-cargo run -p fslite-cli -- --db ./fslite.db --workspace "$WORKSPACE" ls /
+WORKSPACE=$(cargo run -q -p fslite -- --db ./fslite.db --create-workspace)
+cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" mkdir /docs
+cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" write /docs/hello.txt --text=hi
+cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" ls /
 
 # Local, interactive REPL (the workspace must already exist — create it
 # first, as above, or against the same --db file)
-cargo run -p fslite-cli -- --db ./fslite.db --workspace "$WORKSPACE" --repl
+cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" --repl
 
 # Remote, against a running fslite-server
-cargo run -p fslite-cli -- --server http://localhost:8080 --workspace <id> \
+cargo run -p fslite -- --server http://localhost:8080 --workspace <id> \
   --token "$FSLITE_TOKEN" ls /
 ```
 
@@ -240,7 +264,7 @@ is run against `SqliteFileSystem` in `crates/fslite-sqlite/tests/conformance.rs`
 The canonical `FileSystem` trait and the SQLite backend are complete: all 28
 trait methods are implemented and covered by the conformance suite plus the
 SQLite backend's own extensive test suite. `fslite-server`, `fslite-command`,
-and `fslite-cli` build on this crate's exact public API and are workspace
+and `fslite` build on this crate's exact public API and are workspace
 members with their own test suites (HTTP contract tests for the server;
 lexer/parser/sanitizer/executor tests for the command codec; end-to-end
 local, remote, and REPL tests for the CLI). They've had several rounds of

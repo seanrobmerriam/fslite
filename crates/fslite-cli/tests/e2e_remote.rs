@@ -7,7 +7,7 @@ use fslite_sqlite::SqliteFileSystem;
 const TOKEN: &str = "cli-remote-e2e-token";
 
 /// Boots a real `fslite-server` in-process on an ephemeral port and returns
-/// its base URL plus the workspace id a `fslite-cli --server` invocation
+/// its base URL plus the workspace id a `fslite --server` invocation
 /// should target.
 async fn spawn_server() -> (String, fslite_core::WorkspaceId) {
     let sqlite_fs = Arc::new(
@@ -50,11 +50,11 @@ async fn spawn_server() -> (String, fslite_core::WorkspaceId) {
 
 // This test spawns the axum server as a `tokio::spawn`ed task and then
 // makes a *blocking* `std::process::Command::output()` call (the real
-// `fslite-cli` binary, run as a subprocess) on the same async task. With
+// `fslite` binary, run as a subprocess) on the same async task. With
 // the default current-thread test runtime, that blocking call would starve
 // the executor and the spawned server task would never get polled to
 // accept/serve the child process's HTTP request — a deadlock, not a real
-// bug in `fslite-cli`, `fslite-server`, or the parser/executor stack.
+// bug in `fslite`, `fslite-server`, or the parser/executor stack.
 // `flavor = "multi_thread"` gives the server task its own OS thread to run
 // on while the blocking `Command::output()` call executes.
 #[tokio::test(flavor = "multi_thread")]

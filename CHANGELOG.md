@@ -34,10 +34,13 @@ with the 0.x carve-out described in `SEMVER.md`.
   `LocalExecutor` (in-process) and `RemoteExecutor` (HTTP) sharing the
   `Executor` trait; three-tier terminal-output sanitizer
   (`sanitize_name`, `sanitize_for_terminal`, `sanitize_preview`).
-- **fslite-cli**: `fslite` binary with `--db`/`--memory`/`--server`
+- **fslite**: `fslite` binary with `--db`/`--memory`/`--server`
   modes, `create`/`delete`/`use` subcommands for the local
   filesystem/workspace registry, REPL mode, `--json` output, per-verb
-  help (`fslite help [<verb>]`).
+  help (`fslite help [<verb>]`); package renamed from `fslite-cli` so
+  installation is `cargo install fslite`; first un-targeted filesystem command
+  creates a persistent `default` database/workspace; registry and context JSON
+  updates are atomic and concurrent initialization is serialized.
 - Six runnable examples: `embedded`, `batch`, `trash_lifecycle`,
   `workspace_isolation`, `search_and_glob`, `server_and_remote_cli`.
 

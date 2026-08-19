@@ -6,10 +6,7 @@ use std::path::Path;
 use atomic_write_file::AtomicWriteFile;
 use serde::Serialize;
 
-pub fn write_json<T: Serialize>(
-    path: &Path,
-    value: &T,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

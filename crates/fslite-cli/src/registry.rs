@@ -2,7 +2,7 @@
 //! workspace names to their underlying SQLite file paths and workspace ids.
 //! `fslite-core`/`fslite-sqlite` have no concept of a name — a `Workspace`
 //! is identified purely by `WorkspaceId` (a UUID) — so this registry exists
-//! entirely client-side, in `fslite-cli`, and is invisible to every other
+//! entirely client-side, in `fslite`, and is invisible to every other
 //! consumer of the workspace (a remote `fslite-server`, another client,
 //! `fslite-command`'s own executors).
 

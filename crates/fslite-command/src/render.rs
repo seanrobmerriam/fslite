@@ -1,5 +1,5 @@
 //! Turns a [`CommandOutput`] into text: either a human-readable summary
-//! (used by default in `fslite-cli`) or pretty-printed JSON matching the
+//! (used by default in `fslite`) or pretty-printed JSON matching the
 //! wire codec exactly (`--json`). Every untrusted string field (node names,
 //! link targets, and paths — which `fslite-core` normalizes but does not
 //! strip control bytes from) is passed through one of three sanitizers

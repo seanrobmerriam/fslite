@@ -1,7 +1,6 @@
 use std::process::Command;
 
-const NOTICE: &str =
-    "No database or workspace found, creating default database and workspace\n";
+const NOTICE: &str = "No database or workspace found, creating default database and workspace\n";
 
 struct Fixture {
     config: tempfile::TempDir,
@@ -79,11 +78,7 @@ fn discovery_and_explicit_targets_do_not_bootstrap() {
     let explicit_db = fixture.data.path().join("explicit.db");
     let created = fixture
         .cli()
-        .args([
-            "--db",
-            explicit_db.to_str().unwrap(),
-            "--create-workspace",
-        ])
+        .args(["--db", explicit_db.to_str().unwrap(), "--create-workspace"])
         .output()
         .unwrap();
     assert!(created.status.success());
@@ -136,12 +131,8 @@ fn simultaneous_first_commands_converge_on_one_workspace() {
     )
     .unwrap();
     assert_eq!(
-        registry["workspaces"]["default"]
-            .as_object()
-            .unwrap()
-            .len(),
+        registry["workspaces"]["default"].as_object().unwrap().len(),
         1
     );
     assert!(registry["workspaces"]["default"]["default"].is_string());
-
 }

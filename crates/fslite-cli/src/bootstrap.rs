@@ -10,8 +10,7 @@ use crate::registry::Registry;
 
 pub const DEFAULT_FILESYSTEM: &str = "default";
 pub const DEFAULT_WORKSPACE: &str = "default";
-pub const NOTICE: &str =
-    "No database or workspace found, creating default database and workspace";
+pub const NOTICE: &str = "No database or workspace found, creating default database and workspace";
 
 #[derive(Debug)]
 pub struct BootstrapOutcome {
@@ -75,11 +74,7 @@ pub async fn ensure_default() -> Result<BootstrapOutcome, Box<dyn std::error::Er
     if !registry.workspace_exists(DEFAULT_FILESYSTEM, DEFAULT_WORKSPACE) {
         let fs = SqliteFileSystem::open(&db_path, Default::default()).await?;
         let workspace = fs.create_workspace(Default::default()).await?;
-        registry.register_workspace(
-            DEFAULT_FILESYSTEM,
-            DEFAULT_WORKSPACE.into(),
-            workspace.id,
-        );
+        registry.register_workspace(DEFAULT_FILESYSTEM, DEFAULT_WORKSPACE.into(), workspace.id);
         created = true;
     }
 
@@ -263,7 +258,10 @@ mod tests {
 
         let error = ensure_default().await.unwrap_err().to_string();
         assert!(error.contains("missing"), "{error}");
-        assert!(error.contains(&env.db_path().display().to_string()), "{error}");
+        assert!(
+            error.contains(&env.db_path().display().to_string()),
+            "{error}"
+        );
         assert!(Context::load().unwrap().filesystem.is_none());
     }
 
@@ -278,9 +276,14 @@ mod tests {
         let error = ensure_default().await.unwrap_err().to_string();
         assert!(error.contains("reserved"), "{error}");
         assert!(error.contains(&other.display().to_string()), "{error}");
-        assert!(error.contains(&env.db_path().display().to_string()), "{error}");
+        assert!(
+            error.contains(&env.db_path().display().to_string()),
+            "{error}"
+        );
         assert_eq!(
-            Registry::load().unwrap().filesystem_path(DEFAULT_FILESYSTEM),
+            Registry::load()
+                .unwrap()
+                .filesystem_path(DEFAULT_FILESYSTEM),
             Some(other.as_path())
         );
     }
