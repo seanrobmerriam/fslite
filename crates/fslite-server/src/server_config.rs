@@ -148,7 +148,25 @@ pub(crate) struct ResolvedServerConfig {
     pub config_path: PathBuf,
     pub workspace_id: Option<WorkspaceId>,
     pub token: String,
+    pub token_source: TokenSource,
     pub workspace_limits: WorkspaceLimits,
+}
+
+/// Where the effective process credential came from. This is deliberately
+/// separate from the credential value so bootstrap can preserve a durable
+/// credential when a process-level override is in use.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TokenSource {
+    Generated,
+    Stored,
+    Environment,
+    TokenFile,
+}
+
+impl TokenSource {
+    pub(crate) fn is_process_override(self) -> bool {
+        matches!(self, Self::Environment | Self::TokenFile)
+    }
 }
 
 impl fmt::Debug for ResolvedServerConfig {
@@ -160,6 +178,7 @@ impl fmt::Debug for ResolvedServerConfig {
             .field("config_path", &self.config_path)
             .field("workspace_id", &self.workspace_id)
             .field("token", &"[REDACTED]")
+            .field("token_source", &self.token_source)
             .field("workspace_limits", &self.workspace_limits)
             .finish()
     }
@@ -223,7 +242,9 @@ impl ResolvedServerConfig {
                 .or_else(|| stored.map(|state| state.workspace_limits.max_file_bytes))
                 .unwrap_or(default_limits.max_file_bytes),
         };
-        let token = resolve_token(token_from_env(), args.token_file.as_deref(), stored)?;
+        let process_token = token_from_env();
+        let token_source = token_source(process_token.as_ref(), args.token_file.as_deref(), stored);
+        let token = resolve_token(process_token, args.token_file.as_deref(), stored)?;
 
         Ok(Self {
             database_path,
@@ -231,8 +252,25 @@ impl ResolvedServerConfig {
             config_path,
             workspace_id: stored.map(|state| state.workspace_id),
             token,
+            token_source,
             workspace_limits,
         })
+    }
+}
+
+fn token_source(
+    process_token: Option<&String>,
+    token_file: Option<&std::path::Path>,
+    stored: Option<&StoredServerState>,
+) -> TokenSource {
+    if process_token.is_some() {
+        TokenSource::Environment
+    } else if token_file.is_some() {
+        TokenSource::TokenFile
+    } else if stored.is_some() {
+        TokenSource::Stored
+    } else {
+        TokenSource::Generated
     }
 }
 
