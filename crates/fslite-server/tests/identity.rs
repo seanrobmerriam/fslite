@@ -1,7 +1,10 @@
 mod support;
 
+use std::collections::BTreeSet;
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use fslite_core::Capability;
 use fslite_server::app;
 use http_body_util::BodyExt;
 use tower::ServiceExt;
@@ -24,7 +27,18 @@ async fn me_returns_safe_authenticated_identity() {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(value["workspace_id"], workspace_id.to_string());
-    assert!(value["capabilities"].as_array().unwrap().len() >= 5);
+    let capabilities: BTreeSet<Capability> =
+        serde_json::from_value(value["capabilities"].clone()).unwrap();
+    assert_eq!(
+        capabilities,
+        BTreeSet::from([
+            Capability::Read,
+            Capability::Write,
+            Capability::Delete,
+            Capability::TrashRestore,
+            Capability::WorkspaceAdmin,
+        ])
+    );
     assert!(value.get("actor_metadata").is_none());
     assert!(!String::from_utf8_lossy(&bytes).contains(support::TOKEN));
 }
