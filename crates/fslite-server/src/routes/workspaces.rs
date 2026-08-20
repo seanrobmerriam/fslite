@@ -1,4 +1,5 @@
-//! Workspace admin routes: `create_workspace`, `delete_workspace`, `workspace_usage`.
+//! Workspace admin routes: `create_workspace`, `delete_workspace`,
+//! `reset_workspace`, `workspace_usage`.
 //!
 //! `create`/`delete` authenticate directly against `state.auth` instead of
 //! going through the `Ctx` extractor: `create` has no workspace in the URL to
@@ -8,10 +9,10 @@
 //! uses `Ctx` like every other route.
 
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
-use axum::routing::get;
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::{get, post};
 use axum::{Json, Router};
-use fslite_core::WorkspaceId;
+use fslite_core::{Capability, FsError, RequestContext, WorkspaceId, WorkspaceUsage};
 use serde::Serialize;
 
 use crate::Ctx;
@@ -31,6 +32,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/v1/workspaces/{workspace_id}/usage",
             get(usage).fallback(crate::routes::method_not_allowed),
+        )
+        .route(
+            "/v1/workspaces/{workspace_id}/reset",
+            post(reset_workspace).fallback(crate::routes::method_not_allowed),
         )
 }
 
@@ -83,6 +88,25 @@ async fn delete_workspace(
     }
     state.admin.delete_workspace(workspace_id).await?;
     Ok(StatusCode::OK)
+}
+
+async fn reset_workspace(
+    State(state): State<AppState>,
+    Path(workspace_id): Path<WorkspaceId>,
+    headers: HeaderMap,
+) -> Result<Json<WorkspaceUsage>, ApiError> {
+    let actor = state.auth.authenticate(&headers).await?;
+    if actor.workspace_id != workspace_id {
+        return Err(ApiError::WorkspaceMismatch);
+    }
+    if !actor.capabilities.contains(&Capability::WorkspaceAdmin) {
+        return Err(ApiError::Domain(FsError::permission_denied(
+            "reset_workspace",
+        )));
+    }
+    let ctx = RequestContext::new(workspace_id, actor.actor_metadata, actor.capabilities);
+    state.admin.reset_workspace(workspace_id).await?;
+    Ok(Json(state.fs.workspace_usage(&ctx).await?))
 }
 
 async fn usage(

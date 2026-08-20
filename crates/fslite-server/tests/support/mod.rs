@@ -11,6 +11,21 @@ pub const TOKEN: &str = "test-token";
 /// authenticates as that workspace with every capability, and the
 /// `AppState` wiring them together.
 pub async fn fixture() -> (AppState, WorkspaceId) {
+    fixture_with_capabilities(BTreeSet::from([
+        Capability::Read,
+        Capability::Write,
+        Capability::Delete,
+        Capability::TrashRestore,
+        Capability::WorkspaceAdmin,
+    ]))
+    .await
+}
+
+/// Builds the standard in-memory fixture with a token scoped to the created
+/// workspace and exactly the supplied capabilities.
+pub async fn fixture_with_capabilities(
+    capabilities: BTreeSet<Capability>,
+) -> (AppState, WorkspaceId) {
     let sqlite_fs = Arc::new(
         SqliteFileSystem::open_in_memory(Default::default())
             .await
@@ -27,13 +42,7 @@ pub async fn fixture() -> (AppState, WorkspaceId) {
         TOKEN.to_string(),
         AuthenticatedActor {
             workspace_id: workspace.id,
-            capabilities: BTreeSet::from([
-                Capability::Read,
-                Capability::Write,
-                Capability::Delete,
-                Capability::TrashRestore,
-                Capability::WorkspaceAdmin,
-            ]),
+            capabilities,
             actor_metadata: Default::default(),
         },
     );

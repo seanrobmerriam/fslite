@@ -4,8 +4,8 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::http::Request;
-use fslite_core::{Capability, FileSystem, WorkspaceId};
+use axum::http::{Request, StatusCode};
+use fslite_core::{Capability, FileSystem, Page, WorkspaceId, WorkspaceUsage};
 use fslite_server::{
     AppState, AuthenticatedActor, BearerTokenAuthProvider, SqliteWorkspaceAdmin, app,
 };
@@ -167,4 +167,153 @@ async fn delete_workspace_token_for_a_different_workspace_is_forbidden() {
         .await
         .unwrap();
     assert_eq!(response.status(), 403);
+}
+
+#[tokio::test]
+async fn reset_workspace_removes_active_files_and_trash() {
+    let (state, workspace_id) = support::fixture().await;
+    let router = app(state);
+
+    let response = router
+        .clone()
+        .oneshot(
+            auth(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/v1/workspaces/{workspace_id}/fs/active.txt"))
+                    .header("content-type", "application/json"),
+            )
+            .body(Body::from(r#"{"op":"touch","create":true}"#))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = router
+        .clone()
+        .oneshot(
+            auth(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/v1/workspaces/{workspace_id}/fs/trashed.txt"))
+                    .header("content-type", "application/json"),
+            )
+            .body(Body::from(r#"{"op":"touch","create":true}"#))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = router
+        .clone()
+        .oneshot(
+            auth(Request::builder().method("POST").uri(format!(
+                "/v1/workspaces/{workspace_id}/fs/trashed.txt?action=trash"
+            )))
+            .body(Body::from("{}"))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = router
+        .clone()
+        .oneshot(
+            auth(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workspaces/{workspace_id}/reset")),
+            )
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let usage: WorkspaceUsage = serde_json::from_slice(&body).unwrap();
+    assert_eq!(usage.workspace_id, workspace_id);
+    assert_eq!(usage.active_nodes, 1);
+
+    let response = router
+        .clone()
+        .oneshot(
+            auth(Request::builder().uri(format!("/v1/workspaces/{workspace_id}/fs/active.txt")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let response = router
+        .oneshot(
+            auth(Request::builder().uri(format!("/v1/workspaces/{workspace_id}/trash")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let trash: Page<fslite_core::TrashEntry> = serde_json::from_slice(&body).unwrap();
+    assert!(trash.items.is_empty());
+}
+
+#[tokio::test]
+async fn reset_workspace_without_a_token_is_unauthorized() {
+    let (state, workspace_id) = support::fixture().await;
+    let response = app(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/workspaces/{workspace_id}/reset"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn reset_workspace_token_for_a_different_workspace_is_forbidden() {
+    let (state, _workspace_id) = support::fixture().await;
+    let other = WorkspaceId::new();
+    let response = app(state)
+        .oneshot(
+            auth(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workspaces/{other}/reset")),
+            )
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn reset_workspace_without_workspace_admin_capability_is_forbidden() {
+    let (state, workspace_id) =
+        support::fixture_with_capabilities(BTreeSet::from([Capability::Read, Capability::Write]))
+            .await;
+    let response = app(state)
+        .oneshot(
+            auth(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workspaces/{workspace_id}/reset")),
+            )
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
