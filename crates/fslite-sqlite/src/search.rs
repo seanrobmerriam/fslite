@@ -391,35 +391,35 @@ fn kind_code(kind: NodeKind) -> i64 {
 }
 
 fn predicate_matches(node: &RawNode, query: &FindQuery) -> bool {
-    if let Some(kind) = query.kind
-        && node.kind != kind_code(kind)
-    {
-        return false;
+    if let Some(kind) = query.kind {
+        if node.kind != kind_code(kind) {
+            return false;
+        }
     }
-    if let Some(min) = query.min_logical_size
-        && (node.size as u64) < min
-    {
-        return false;
+    if let Some(min) = query.min_logical_size {
+        if (node.size as u64) < min {
+            return false;
+        }
     }
-    if let Some(max) = query.max_logical_size
-        && (node.size as u64) > max
-    {
-        return false;
+    if let Some(max) = query.max_logical_size {
+        if (node.size as u64) > max {
+            return false;
+        }
     }
-    if let Some(after) = query.modified_after_ms
-        && node.modified_at_ms <= after
-    {
-        return false;
+    if let Some(after) = query.modified_after_ms {
+        if node.modified_at_ms <= after {
+            return false;
+        }
     }
-    if let Some(before) = query.modified_before_ms
-        && node.modified_at_ms >= before
-    {
-        return false;
+    if let Some(before) = query.modified_before_ms {
+        if node.modified_at_ms >= before {
+            return false;
+        }
     }
-    if let Some(substring) = &query.name_contains
-        && !node.name.contains(substring.as_str())
-    {
-        return false;
+    if let Some(substring) = &query.name_contains {
+        if !node.name.contains(substring.as_str()) {
+            return false;
+        }
     }
     true
 }

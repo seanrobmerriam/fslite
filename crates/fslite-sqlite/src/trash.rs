@@ -78,10 +78,10 @@ pub(crate) fn trash_tx(
         ResolveOutcome::LinkLoop => return Ok(TrashOutcome::LinkLoop),
     };
 
-    if let Some(expected) = options.expected_revision
-        && node.revision != expected.get() as i64
-    {
-        return Ok(TrashOutcome::RevisionConflict);
+    if let Some(expected) = options.expected_revision {
+        if node.revision != expected.get() as i64 {
+            return Ok(TrashOutcome::RevisionConflict);
+        }
     }
 
     let trash_id = TrashId::new().to_string();
@@ -351,10 +351,10 @@ pub(crate) fn restore_tx(
         return Ok(RestoreOutcome::TrashNotFound);
     };
 
-    if let Some(expected) = options.expected_revision
-        && node.revision != expected.get() as i64
-    {
-        return Ok(RestoreOutcome::RevisionConflict);
+    if let Some(expected) = options.expected_revision {
+        if node.revision != expected.get() as i64 {
+            return Ok(RestoreOutcome::RevisionConflict);
+        }
     }
 
     let (dest_parent_id, dest_name) = match destination {

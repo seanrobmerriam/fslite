@@ -11,8 +11,8 @@ networking and exposes port 8080.
 
 The runtime includes `ca-certificates` and `curl`, allowing a `/readyz`
 health check. It contains no credential or credential default. The entrypoint
-only reports configured database/configuration paths, checks their parent
-directories are writable, and `exec`s its command.
+reports the configured database/configuration paths (but never a token),
+checks their parent directories are writable, and `exec`s its command.
 
 ## Files
 
@@ -20,6 +20,7 @@ directories are writable, and `exec`s its command.
 - `crates/fslite-server/Dockerfile`
 - `crates/fslite-server/docker-entrypoint.sh`
 - `crates/fslite-server/tests/container_smoke.sh`
+- `crates/fslite-server/tests/container_contract.sh`
 
 ## RED/GREEN evidence
 
@@ -58,17 +59,42 @@ Rust 1.85 multi-stage builder, package-targeted release build, non-root user,
 private-network bind, health check, writable-path entrypoint checks, and the
 absence of a token assignment in Dockerfile/entrypoint.
 
-## Docker validation limitation
+## Docker build and runtime verification
 
-The Docker daemon is available, and an isolated `rust:1.85-bookworm` build of
-`cargo build --locked --release --package fslite-server` completed successfully
-in 59.29 seconds. However, this environment terminates attached legacy
-`docker build` clients after roughly 60 seconds. Each build reached the valid
-Dockerfile compile layer and its builder container was cancelled at that
-boundary (exit 101) before an image was produced. The daemon's logging driver
-also does not expose failed builder logs. Therefore `docker image inspect` and
-the image-backed persistence smoke flow could not be completed in this runner.
-No image was published, pushed, or deployed.
+BuildKit was unavailable because this Docker installation has no `buildx`
+component:
+
+```text
+DOCKER_BUILDKIT=1 docker build -f crates/fslite-server/Dockerfile -t fslite-server:local .
+ERROR: BuildKit is enabled but the buildx component is missing or broken.
+```
+
+The exact legacy build was therefore launched in a detached `screen` session
+and polled from the terminal, avoiding the attached-command timeout:
+
+```text
+docker build -f crates/fslite-server/Dockerfile -t fslite-server:local .
+Successfully built 0461d57172aa
+Successfully tagged fslite-server:local
+
+docker image inspect fslite-server:local --format '{{.Config.User}}'
+10001:10001
+
+sh crates/fslite-server/tests/container_smoke.sh fslite-server:local
+exit=0
+```
+
+The smoke script passed its readiness, authenticated `/v1/me`, content write,
+container recreation, and persisted-content read checks. It additionally
+asserts that each successful startup log contains the non-secret configured
+`FSLITE_DB` and `FSLITE_CONFIG` paths without printing container logs or token
+values. Its cleanup was verified to leave no `fslite-server-smoke` container or
+`fslite-server-smoke-data` volume.
+
+Docker Desktop does not mount a single file from the system temporary directory
+as a file in this environment, so the script's `mktemp -d` template now creates
+its exact temporary directory beside the script, a Docker-shared location. The
+required token-file mount and cleanup semantics are unchanged.
 
 ## Self-review
 
@@ -77,17 +103,71 @@ No image was published, pushed, or deployed.
 - `/data` is explicitly owned by UID/GID 10001 and declared as the persistent
   volume; both server state paths are below it.
 - The smoke script uses only the named smoke container/volume and its exact
-  `mktemp -d` directory. It refuses to remove pre-existing names and lets
-  Docker fail naturally if port 18080 belongs to another process.
+  `mktemp -d` directory. It refuses to remove pre-existing names, marks its
+  container as cleanup-owned before `docker run`, and lets Docker fail
+  naturally if port 18080 belongs to another process.
 - The smoke flow waits for readiness, obtains `workspace_id` through an
   authenticated `/v1/me`, writes `persist.txt`, recreates only its container,
   and verifies the same named volume returns `persistent`.
 - Credentials are supplied at runtime through the temporary read-only token
   file; no production credential appears in the image configuration.
 
+## Review fixes and Rust 1.85 compatibility repair
+
+### RED/GREEN for review fixes
+
+`sh crates/fslite-server/tests/container_contract.sh` was added before the
+entrypoint change and initially failed with:
+
+```text
+entrypoint did not report its configured FSLITE_DB path
+```
+
+After adding the two non-secret path lines, the same contract reached its
+second regression and failed with:
+
+```text
+smoke cleanup did not remove a container created by failed docker run
+```
+
+Moving the cleanup-ownership marker before `docker run` made the complete
+contract pass. The contract uses a deterministic temporary Docker stub: its
+`run` command creates the exact smoke-container marker then fails, and the
+test verifies the cleanup handler removes that marker and its volume marker.
+It never supplies or prints a token.
+
+### Rust 1.85 build blocker and repair
+
+The detached exact image build initially completed with exit 101, rather than
+being cut off by the command runner. Its concrete compiler output was 23
+`E0658` errors, such as:
+
+```text
+error[E0658]: `let` expressions in this position are unstable
+ --> crates/fslite-sqlite/src/content.rs:430:8
+```
+
+The affected source used `if let ... && ...` let-chain syntax, which Rust 1.85
+does not support. With explicit approval for the necessary scope expansion,
+the 23 expressions in `content.rs`, `directory.rs`, `mutate.rs`, `search.rs`,
+and `trash.rs` were mechanically rewritten as equivalent nested `if` blocks.
+No toolchain or behavior changed.
+
+Verification after the rewrite:
+
+```text
+cargo fmt --check
+cargo check --workspace
+cargo test -p fslite-sqlite
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+sh crates/fslite-server/tests/container_contract.sh
+```
+
+All passed, followed by the successful exact Rust 1.85 image build and full
+persistence smoke above.
+
 ## Concerns
 
-Image-build and image-backed smoke results remain unverified solely because of
-the runner's 60-second legacy-Docker-client limit. Run the documented build
-and `sh crates/fslite-server/tests/container_smoke.sh` in a normal Docker
-environment to complete those two checks.
+None. The local `fslite-server:local` image is intentionally retained for the
+showcase workflow; nothing was published, pushed, or deployed.

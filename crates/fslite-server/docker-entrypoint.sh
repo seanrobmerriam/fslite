@@ -20,4 +20,7 @@ check_writable_parent() {
 check_writable_parent "$FSLITE_DB"
 check_writable_parent "$FSLITE_CONFIG"
 
+printf 'FSLITE_DB=%s\n' "$FSLITE_DB"
+printf 'FSLITE_CONFIG=%s\n' "$FSLITE_CONFIG"
+
 exec "$@"
