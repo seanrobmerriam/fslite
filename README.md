@@ -85,7 +85,7 @@ setup) and runnable with `cargo run --example <name>`:
 | [`trash_lifecycle`](examples/trash_lifecycle.rs) | `trash` hides a subtree without touching its data, `restore` brings it back (optionally under a new name), and `purge` is the only way its content is actually reclaimed. |
 | [`workspace_isolation`](examples/workspace_isolation.rs) | Two workspaces in one database hold the same path independently, with no cross-workspace visibility — including a rejected cross-workspace pagination cursor. |
 | [`search_and_glob`](examples/search_and_glob.rs) | `glob` (path-shape matching), `find` (bounded metadata predicates), and `search_content` (literal byte matches inside files). |
-| [`server_and_remote_cli`](examples/server_and_remote_cli.rs) | Runs `fslite-server`'s HTTP API in-process and drives it with `fslite-command`'s `RemoteExecutor` — the same client `fslite --server` uses — over a real TCP connection. |
+| [`server_and_remote_cli`](crates/fslite-server/examples/server_and_remote_cli.rs) | Runs `fslite-server`'s HTTP API in-process and drives it with `fslite-command`'s `RemoteExecutor` — the same client `fslite --server` uses — over a real TCP connection. Run with `cargo run -p fslite-server --example server_and_remote_cli`. |
 
 ## CLI and server
 
@@ -145,22 +145,101 @@ cargo run -p fslite -- --server http://localhost:8080 --workspace <id> \
   --token "$FSLITE_TOKEN" ls /
 ```
 
-`fslite-server` is a standalone binary; it reads bearer tokens from
-`FSLITE_TOKENS` (`token=workspace_uuid` pairs) and serves an in-memory
-`SqliteFileSystem` on `0.0.0.0:8080`:
+`fslite-server` is a standalone persistent SQLite server. It creates a
+default database, workspace, and bearer credential on its first start, then
+reuses them on later starts.
 
 ```bash
-FSLITE_TOKENS="devtoken=<workspace-uuid>" cargo run -p fslite-server
+cargo install fslite-server
+fslite-server
+
+# Docker/private-network deployment
+FSLITE_TOKEN_FILE=/run/secrets/fslite_token \
+FSLITE_DB=/data/fslite.db \
+FSLITE_BIND=0.0.0.0:8080 \
+fslite-server
 ```
 
-This shipped `main.rs` is reference wiring, not a deployable server as-is: the
-backing store is a fresh in-memory database on every start (nothing survives
-a restart), and `FSLITE_TOKENS` is read once at startup, so a workspace
-created afterward via `POST /v1/workspaces` has no token that can reach it
-until the process is restarted with that id added — which then loses the
-workspace again. A real deployment needs its own `main` wiring a persistent
-`SqliteFileSystem::open(path, ..)` and its own `AuthProvider` that can mint or
-look up tokens for workspaces created at runtime.
+## Server operation and security
+
+With no options, `fslite-server` stores its database at the platform fslite
+local-data path plus `fslite.db`, and its durable server state at the platform
+fslite configuration path plus `server.json`. On Linux these are normally
+`$XDG_DATA_HOME/fslite/fslite.db` (or `~/.local/share/fslite/fslite.db`) and
+`$XDG_CONFIG_HOME/fslite/server.json` (or `~/.config/fslite/server.json`).
+Use `--db` / `FSLITE_DB` and `--config` / `FSLITE_CONFIG` to make locations
+explicit; the binary does not print either path during a normal first start.
+
+When the database or the configured workspace is absent, it prints this exact
+line once before the connection guidance:
+
+```text
+No database or workspace found, creating default database and workspace
+```
+
+The same first start prints one ready-to-run client command containing a newly
+generated 64-hex-character bearer credential and the new workspace ID. Copy
+the credential into a protected secret store immediately; it is not printed on
+later starts. Later starts name the persisted configuration file and print a
+client command using `$FSLITE_TOKEN` instead. The default listener is
+`127.0.0.1:8080` (not publicly reachable); `--bind` / `FSLITE_BIND` changes
+it. Supplying `--bind 127.0.0.1:0` makes the listening line and connection
+guidance use the actual assigned port.
+
+Configuration uses command-line values ahead of the matching environment
+variables, then persisted state, then defaults. This applies to `--db`,
+`--bind`, `--config`, `--token-file`, `--max-bytes`, `--max-nodes`, and
+`--max-file-bytes`. Credential resolution has one deliberate security
+exception: `FSLITE_TOKEN` wins over `--token-file` / `FSLITE_TOKEN_FILE`,
+which win over the persisted credential; there is intentionally no plaintext
+`--token` flag. A token supplied through the environment or a token file is a
+process-only override and is never written back to the state file.
+
+The quota flags set the byte, node, and regular-file limits when the server
+creates or replaces its default workspace. Existing workspace limits are not
+retroactively changed. The defaults are 10 GiB total logical bytes, 1,000,000
+nodes, and 1 GiB per regular file.
+
+Prefer `FSLITE_TOKEN_FILE` (or `--token-file`) for containers, service
+managers, and shared hosts so the bearer value stays out of command lines and
+environment inspection. The server trims one token from that file. Its durable
+state file also contains the credential: on Unix it is atomically replaced
+with mode `0600`. On non-Unix platforms fslite does not set or verify a
+platform ACL; run it under a dedicated account and restrict the state file and
+its parent directory with that platform's ACL tools. If the credential is
+lost, recover the protected state file from backup or run with a replacement
+token file/environment value for that process. Do not casually delete
+`server.json`: with the same database, its absence creates a new default
+workspace and credential while leaving unrelated existing workspaces intact.
+
+Use the authenticated identity endpoint to discover the scoped workspace:
+
+```bash
+curl --fail \
+  -H "Authorization: Bearer $FSLITE_TOKEN" \
+  http://127.0.0.1:8080/v1/me
+```
+
+`GET /v1/me` returns only `workspace_id` and `capabilities`; it never returns
+the bearer credential or actor metadata. To empty that same workspace, send
+`POST /v1/workspaces/{workspace_id}/reset` with its bearer credential. Reset
+requires the same workspace plus the `workspace_admin` capability, and
+atomically preserves its ID and quotas while deleting non-root nodes, content,
+attributes, trash, usage, and change history.
+
+The repository includes a non-root image:
+
+```bash
+docker build -f crates/fslite-server/Dockerfile -t fslite-server:local .
+```
+
+It defaults to `/data/fslite.db`, `/data/server.json`, and
+`0.0.0.0:8080`, with `/data` as its persistent volume. For a web application,
+place the server on a Docker-private network, mount the same token file only
+into trusted server-side services, and publish the web gateway's port—not the
+fslite-server port. Public browsers must call that server-side gateway; never
+send them this bearer credential. The image runs as UID/GID `10001` and its
+`/readyz` health check is available to private-network peers.
 
 Every verb `fslite-command` understands corresponds one-to-one to a
 `FileSystem` method: `usage`, `stat`, `exists`, `ls`, `tree`, `mkdir`, `cat`,

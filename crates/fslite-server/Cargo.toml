@@ -1,13 +1,13 @@
 [package]
 name = "fslite-server"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "HTTP adapter exposing fslite-core's FileSystem trait as a resource-oriented REST API, gated by a pluggable AuthProvider."
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
+documentation = "https://docs.rs/fslite-server"
 readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
@@ -23,7 +23,7 @@ bytes.workspace = true
 clap.workspace = true
 directories.workspace = true
 fslite-core = { path = "../fslite-core", version = "0.1.0" }
-fslite-sqlite = { path = "../fslite-sqlite", version = "0.1.0" }
+fslite-sqlite = { path = "../fslite-sqlite", version = "0.2.0" }
 futures.workspace = true
 http-body-util.workspace = true
 serde.workspace = true
@@ -38,7 +38,3 @@ uuid.workspace = true
 [dev-dependencies]
 fslite-command = { path = "../fslite-command" }
 tempfile.workspace = true
-
-[[example]]
-name = "server_and_remote_cli"
-path = "../../examples/server_and_remote_cli.rs"

@@ -1,45 +1,78 @@
 # Release process
 
-This workspace uses a single git tag per release (`vX.Y.Z`) covering all
-six crates at the same version.
+Crates in this workspace are versioned independently. A git tag may cover a
+coordinated release, but it does not imply that every crate has the same
+version. Publish production dependencies before their consumers, and wait for
+crates.io to index each newly published dependency before publishing a crate
+whose manifest requires it.
 
-## Cutting a release
+## Persistent server 0.2.0 release train
 
-1. Ensure `main` is green: `cargo fmt --all --check`,
-   `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
-   `cargo test --workspace --all-features`.
-2. Update `CHANGELOG.md`: add a new section with the release date and a
-   list of changes per crate.
-3. Bump versions in every `crates/*/Cargo.toml` to the new version.
-4. Run `cargo publish --dry-run -p <crate>` for each crate in
-   dependency order. **Internal-crate dev-dependencies are path-only**
-   (no `version = "..."`) to break the `fslite-server` ↔ `fslite-command`
-   cycle and to keep `fslite-sqlite` from gating on `fslite-conformance`:
-   1. `fslite-core`        (no internal prod- or dev-deps)
-   2. `fslite-conformance` (prod-deps: `fslite-core`)
-   3. `fslite-sqlite`      (prod-deps: `fslite-core`)
-   4. `fslite-command`     (prod-deps: `fslite-core`)
-   5. `fslite-server`      (prod-deps: `fslite-core`, `fslite-sqlite`)
-   6. `fslite`             (prod-deps: `fslite-command`, `fslite-core`, `fslite-sqlite`)
+The persistent-server train changes only these package versions:
 
-   `fslite-conformance`, `fslite-sqlite`, and `fslite-command` may be
-   published in any relative order (they all only prod-dep on
-   `fslite-core`). `fslite-server` requires `fslite-sqlite` to already
-   be on crates.io; `fslite` requires both `fslite-command` and
-   `fslite-sqlite` to already be on crates.io.
-5. Commit the version bumps and CHANGELOG entry.
-6. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z"`.
-7. Push the tag: `git push origin vX.Y.Z`.
-8. **Manual step (user only)**: `cargo login` and then `cargo publish`
-   each crate in the same dependency order.
+1. `fslite-sqlite 0.2.0`;
+2. `fslite-server 0.2.0`, which requires `fslite-sqlite = "0.2.0"`;
+3. `fslite 0.2.0`, whose manifest accepts `fslite-sqlite = "0.2.0"`.
 
-## Verifying the release
+`fslite-core 0.1.0` and `fslite-command 0.1.1` remain the already-published
+production prerequisites for this train. Internal development dependencies are
+path-only, so they do not add a publish-order requirement.
 
-After publish, verify docs.rs renders every crate correctly:
+## Pre-publish checks
 
-- https://docs.rs/fslite-core
+Run these commands from a clean checkout before publishing. They prepare and
+validate packages only; they do not publish anything.
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo publish --dry-run -p fslite-sqlite
+git diff --check
+```
+
+After `fslite-sqlite 0.2.0` is indexed—but before publishing the dependent
+crates—run:
+
+```bash
+cargo package -p fslite-server --allow-dirty --no-verify
+cargo package -p fslite --allow-dirty --no-verify
+```
+
+Inspect the generated package file lists before continuing. They must include
+the server's package-local `examples/server_and_remote_cli.rs` and relevant
+release notes, and must not contain SQLite databases, credentials, `.env`
+files, or build output. Do not represent a server publish dry run as complete
+until `fslite-sqlite 0.2.0` is indexed on crates.io.
+
+## Publish order and commands
+
+After explicit release authorization, use this exact dependency order:
+
+```bash
+# 1. Publish the additive SQLite API.
+cargo publish -p fslite-sqlite
+
+# 2. Wait until crates.io indexes fslite-sqlite 0.2.0, then verify and publish
+#    the server that requires it.
+cargo publish --dry-run -p fslite-server
+cargo publish -p fslite-server
+
+# 3. Publish the CLI only when releasing its updated SQLite requirement.
+cargo publish --dry-run -p fslite
+cargo publish -p fslite
+```
+
+Publishing, tagging, pushing, image publication, and deployment are separate
+authorized actions. Do not run any command in the last block during ordinary
+development or release preparation. Once the authorized publishes have
+succeeded, update the release record, create the agreed tag, and push it using
+the repository's normal release approval process.
+
+## Post-publish verification
+
+Verify each published package and docs.rs page:
+
 - https://docs.rs/fslite-sqlite
-- https://docs.rs/fslite-conformance
 - https://docs.rs/fslite-server
-- https://docs.rs/fslite-command
 - https://docs.rs/fslite

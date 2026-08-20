@@ -8,6 +8,15 @@ plus the inherent `SqliteFileSystem::create_workspace` and
 `SqliteFileSystem::delete_workspace` methods. Additive changes ship as
 minor bumps; breaking changes trigger a minor bump per `SEMVER.md`.
 
+## 0.2.0
+
+`SqliteFileSystem::reset_workspace` is an additive administrative API that
+atomically restores one existing workspace to its empty initial state. It
+preserves the workspace ID, creation metadata, and quota configuration while
+removing non-root nodes, content generations, attributes, trash, usage, and
+change history. A failure rolls back the reset. This new public API is a minor
+release under the pre-1.0 policy in `SEMVER.md`.
+
 ## 0.1.0
 
 Initial release. Every method on `FileSystem` is implemented over a

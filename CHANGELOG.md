@@ -5,6 +5,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 with the 0.x carve-out described in `SEMVER.md`.
 
+## [0.2.0] - 2026-08-19
+
+### Added
+
+- **fslite-sqlite**: `SqliteFileSystem::reset_workspace` atomically returns a
+  workspace to an empty-root state without changing its identity or quota
+  configuration. It removes active and trashed content, attributes, usage,
+  and change history together, or rolls the whole reset back.
+- **fslite-server**: the installed binary now bootstraps a persistent SQLite
+  database and default workspace with a durable scoped credential; it exposes
+  safe authenticated identity through `GET /v1/me` and an authorized
+  same-workspace reset endpoint.
+- **fslite-server**: a non-root, multi-stage Docker image persists `/data`,
+  supports secret-file credentials, and defaults to private-network binding on
+  `0.0.0.0:8080`.
+
+### Security
+
+- **fslite-server**: generated credentials are saved atomically and with
+  owner-only mode on Unix, never appear in debug output, and are printed only
+  in first-run connection guidance. `FSLITE_TOKEN` and token-file overrides
+  are process-local and do not overwrite the stored credential.
+- **fslite-server**: no plaintext `--token` argument is accepted. Deployments
+  should use `FSLITE_TOKEN_FILE` and keep bearer credentials out of browsers,
+  shell history, command lines, and untrusted logs.
+
+### Changed
+
+- **fslite-sqlite**, **fslite-server**, and **fslite** are prepared as
+  `0.2.0`. Under this repository's pre-1.0 policy, the additive SQLite reset
+  API requires the minor release; the server depends on it, and the CLI is
+  rebuilt with the updated SQLite dependency requirement.
+
+### Release order
+
+Publish `fslite-sqlite 0.2.0`, wait for crates.io indexing, then publish
+`fslite-server 0.2.0`; publish `fslite 0.2.0` when releasing its manifest with
+the new SQLite dependency. The package preparation in this change does not
+publish, tag, push, or deploy anything.
+
 ## [0.1.1] - 2026-08-19
 
 ### Changed
@@ -61,8 +101,5 @@ with the 0.x carve-out described in `SEMVER.md`.
 ### Notes
 - This is the first public release. See `SEMVER.md` for the 0.x
   stability commitment.
-- `fslite-server`'s shipped `main.rs` is reference wiring only; it
-  opens an in-memory database on every start and reads `FSLITE_TOKENS`
-  once at startup. A real deployment needs its own `main` (see the
-  [Auth provider guide](https://docs.fslite.rusty.yachts/guides/auth-provider)
-  on the project docs site).
+- The original `fslite-server` binary was non-persistent. The `0.2.0` release
+  above replaces that limitation with durable bootstrap behavior.
