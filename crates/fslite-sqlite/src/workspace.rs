@@ -97,6 +97,56 @@ pub(crate) async fn delete_workspace(conn: &Connection, workspace_id: WorkspaceI
     .map_err(db::map_call_error)
 }
 
+pub(crate) async fn reset_workspace(conn: &Connection, workspace_id: WorkspaceId) -> FsResult<()> {
+    let workspace_id_str = workspace_id.to_string();
+    let reset = conn
+        .call(move |conn| {
+            let tx = conn.transaction()?;
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM workspaces WHERE id = ?1)",
+                params![workspace_id_str],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                return Ok(false);
+            }
+
+            tx.execute(
+                "DELETE FROM nodes WHERE workspace_id = ?1",
+                params![workspace_id_str],
+            )?;
+            tx.execute(
+                "DELETE FROM content_generations WHERE workspace_id = ?1",
+                params![workspace_id_str],
+            )?;
+            tx.execute(
+                "DELETE FROM changes WHERE workspace_id = ?1",
+                params![workspace_id_str],
+            )?;
+
+            let root_id = NodeId::new();
+            let now = now_ms();
+            tx.execute(
+                "INSERT INTO nodes(id, workspace_id, parent_id, name, kind, size, revision, \
+                 created_at_ms, modified_at_ms, accessed_at_ms) \
+                 VALUES (?1, ?2, NULL, '', 0, 0, 1, ?3, ?3, ?3)",
+                params![root_id.to_string(), workspace_id_str, now],
+            )?;
+            tx.execute(
+                "UPDATE workspaces SET change_seq = 0, updated_at_ms = ?2 WHERE id = ?1",
+                params![workspace_id_str, now],
+            )?;
+            tx.commit()?;
+            Ok(true)
+        })
+        .await
+        .map_err(db::map_call_error)?;
+
+    reset
+        .then_some(())
+        .ok_or_else(|| FsError::not_found(workspace_id))
+}
+
 struct RawUsage {
     active_logical_bytes: i64,
     trashed_logical_bytes: i64,
