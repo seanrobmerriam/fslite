@@ -1,0 +1,82 @@
+:root {
+  --surface-white: #ffffff;
+  --surface-blue: #eff6ff;
+  --surface-slate: #0f172a;
+  --text-primary: #172033;
+  --text-muted: #526176;
+  --border-subtle: #d7e0ec;
+  --focus-ring: #2563eb;
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2rem;
+  --space-5: 2.5rem;
+  --content-max-width: 72rem;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  color: var(--text-primary);
+  background: var(--surface-blue);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+  min-height: 100vh;
+}
+
+main {
+  width: min(calc(100% - (2 * var(--space-3))), var(--content-max-width));
+  margin-inline: auto;
+  padding-block: var(--space-5);
+}
+
+section {
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--space-1);
+  background: var(--surface-white);
+}
+
+section + section {
+  margin-top: var(--space-3);
+}
+
+.hero {
+  background: var(--surface-slate);
+  color: var(--surface-white);
+}
+
+.hero p {
+  max-width: 42rem;
+  margin-bottom: 0;
+  color: color-mix(in srgb, var(--surface-white) 78%, transparent);
+}
+
+.eyebrow {
+  margin: 0 0 var(--space-1);
+  color: #93c5fd !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 4rem);
+  line-height: 1.05;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
