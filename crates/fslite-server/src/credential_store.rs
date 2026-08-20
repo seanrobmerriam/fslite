@@ -9,14 +9,24 @@ use crate::server_config::{ConfigError, StoredServerState};
 
 pub(crate) fn load_state(path: &Path) -> Result<Option<StoredServerState>, ConfigError> {
     match std::fs::read_to_string(path) {
-        Ok(json) => Ok(Some(serde_json::from_str(&json)?)),
+        Ok(json) => {
+            let mut state: StoredServerState = serde_json::from_str(&json)?;
+            state.token = state.token.trim().to_owned();
+            if state.token.is_empty() {
+                return Err(ConfigError::EmptyStoredToken);
+            }
+            Ok(Some(state))
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
 }
 
 pub(crate) fn save_state(path: &Path, state: &StoredServerState) -> Result<(), ConfigError> {
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         std::fs::create_dir_all(parent)?;
     }
     let json = serde_json::to_vec_pretty(state)?;
@@ -51,6 +61,9 @@ pub(crate) fn read_token_file(path: &Path) -> Result<String, ConfigError> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
     use super::{generate_token, load_state, read_token_file, save_state};
     use crate::server_config::{StoredServerState, WorkspaceLimits};
     use fslite_core::WorkspaceId;
@@ -66,6 +79,29 @@ mod tests {
                 max_nodes: 20,
                 max_file_bytes: 10,
             },
+        }
+    }
+
+    fn current_directory_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    struct CurrentDirectoryGuard(PathBuf);
+
+    impl CurrentDirectoryGuard {
+        fn enter(path: &Path) -> Self {
+            let original = std::env::current_dir().unwrap();
+            std::env::set_current_dir(path).unwrap();
+            Self(original)
+        }
+    }
+
+    impl Drop for CurrentDirectoryGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.0).unwrap();
         }
     }
 
@@ -99,6 +135,58 @@ mod tests {
         save_state(&path, &fixture_state()).unwrap();
 
         assert!(load_state(&path).unwrap().is_some());
+    }
+
+    #[test]
+    fn save_state_supports_a_relative_filename() {
+        let _lock = current_directory_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let _current_directory = CurrentDirectoryGuard::enter(dir.path());
+
+        save_state(Path::new("server.json"), &fixture_state()).unwrap();
+
+        assert!(Path::new("server.json").exists());
+        assert!(load_state(Path::new("server.json")).unwrap().is_some());
+    }
+
+    #[test]
+    fn malformed_json_returns_a_typed_json_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server.json");
+        std::fs::write(&path, "{ invalid json").unwrap();
+
+        assert!(matches!(
+            load_state(&path),
+            Err(crate::server_config::ConfigError::Json(_))
+        ));
+    }
+
+    #[test]
+    fn whitespace_only_persisted_token_is_rejected_without_leakage() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server.json");
+        let mut state = fixture_state();
+        state.token = " \n\t ".to_owned();
+        std::fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
+
+        let error = load_state(&path).unwrap_err();
+
+        assert!(matches!(
+            error,
+            crate::server_config::ConfigError::EmptyStoredToken
+        ));
+        assert!(!error.to_string().contains("token"));
+    }
+
+    #[test]
+    fn persisted_token_is_trimmed_on_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server.json");
+        let mut state = fixture_state();
+        state.token = "\n persisted-token \t".to_owned();
+        std::fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
+
+        assert_eq!(load_state(&path).unwrap().unwrap().token, "persisted-token");
     }
 
     #[cfg(unix)]

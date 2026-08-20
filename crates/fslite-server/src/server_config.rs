@@ -98,6 +98,7 @@ pub(crate) enum ConfigError {
     Json(serde_json::Error),
     PlatformDirectoriesUnavailable,
     EmptyTokenFile(PathBuf),
+    EmptyStoredToken,
 }
 
 impl fmt::Display for ConfigError {
@@ -108,7 +109,9 @@ impl fmt::Display for ConfigError {
             Self::PlatformDirectoriesUnavailable => {
                 formatter.write_str("platform configuration directories are unavailable")
             }
-            Self::EmptyTokenFile(_) => formatter.write_str("credential file is empty"),
+            Self::EmptyTokenFile(_) | Self::EmptyStoredToken => {
+                formatter.write_str("credential is empty")
+            }
         }
     }
 }
@@ -118,7 +121,9 @@ impl std::error::Error for ConfigError {
         match self {
             Self::Io(error) => Some(error),
             Self::Json(error) => Some(error),
-            Self::PlatformDirectoriesUnavailable | Self::EmptyTokenFile(_) => None,
+            Self::PlatformDirectoriesUnavailable
+            | Self::EmptyTokenFile(_)
+            | Self::EmptyStoredToken => None,
         }
     }
 }
@@ -250,12 +255,21 @@ fn resolve_token(
     if let Some(path) = token_file {
         return read_token_file(path);
     }
-    Ok(stored.map_or_else(generate_token, |state| state.token.clone()))
+    let Some(state) = stored else {
+        return Ok(generate_token());
+    };
+    let token = state.token.trim();
+    if token.is_empty() {
+        return Err(ConfigError::EmptyStoredToken);
+    }
+    Ok(token.to_owned())
 }
 
 #[cfg(test)]
+#[allow(unsafe_code)] // Test-only environment mutation is serialized below.
 mod tests {
     use std::net::SocketAddr;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
 
     use super::{CliArgs, ResolvedServerConfig, ServerPaths, WorkspaceLimits};
     use fslite_core::WorkspaceId;
@@ -271,6 +285,41 @@ mod tests {
                 max_nodes: 2,
                 max_file_bytes: 3,
             },
+        }
+    }
+
+    fn environment_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    struct EnvironmentVariableGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvironmentVariableGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var_os(key);
+            // SAFETY: `environment_lock` is held for the test's complete
+            // lifetime, including argument parsing and restoration.
+            unsafe { std::env::set_var(key, value) };
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvironmentVariableGuard {
+        fn drop(&mut self) {
+            // SAFETY: `environment_lock` remains held while the guard drops.
+            unsafe {
+                if let Some(value) = &self.previous {
+                    std::env::set_var(self.key, value);
+                } else {
+                    std::env::remove_var(self.key);
+                }
+            }
         }
     }
 
@@ -364,6 +413,18 @@ mod tests {
     }
 
     #[test]
+    fn explicit_clap_input_overrides_the_environment_value() {
+        use clap::Parser;
+
+        let _lock = environment_lock();
+        let _environment = EnvironmentVariableGuard::set("FSLITE_BIND", "127.0.0.1:7000");
+
+        let args = CliArgs::try_parse_from(["fslite-server", "--bind", "127.0.0.1:9000"]).unwrap();
+
+        assert_eq!(args.bind.unwrap().to_string(), "127.0.0.1:9000");
+    }
+
+    #[test]
     fn defaults_use_the_sqlite_workspace_quota_defaults() {
         let resolved = ResolvedServerConfig::resolve_with_paths(
             CliArgs::default(),
@@ -438,5 +499,24 @@ mod tests {
             std::path::PathBuf::from("/stored/fslite.db")
         );
         assert_eq!(resolved.workspace_id, Some(state.workspace_id));
+    }
+
+    #[test]
+    fn resolution_rejects_an_empty_persisted_token_without_leakage() {
+        let mut state = stored_state();
+        state.token = " \n\t ".to_owned();
+
+        let error = ResolvedServerConfig::resolve_with_paths(
+            CliArgs::default(),
+            Some(state),
+            ServerPaths {
+                data_dir: "/data".into(),
+                config_dir: "/config".into(),
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, super::ConfigError::EmptyStoredToken));
+        assert!(!error.to_string().contains("token"));
     }
 }
