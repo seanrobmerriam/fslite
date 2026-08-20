@@ -1,0 +1,9 @@
+.git
+.worktrees
+.superpowers
+target
+showcase/node_modules
+showcase/dist
+*.db
+*.db-shm
+*.db-wal
