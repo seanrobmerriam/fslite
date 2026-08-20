@@ -10,6 +10,13 @@ shell-script embedders. Flag names and behavior are stable; new verbs
 and flags may be added without bumping. Breaking changes will bump the
 minor version per `SEMVER.md`.
 
+## 0.1.1
+
+Filesystem commands now accept workspace-root-relative paths, so installed
+users can write `mkdir docs`, `write docs/hello.txt --text=hello`, and
+`cat docs/hello.txt`. Absolute paths remain supported, and help text now
+explains both forms.
+
 ## 0.1.0
 
 Initial release. `fslite` binary with `--db`/`--memory`/`--server`
