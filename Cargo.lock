@@ -458,9 +458,12 @@ name = "fslite-server"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "atomic-write-file",
  "axum",
  "base64",
  "bytes",
+ "clap",
+ "directories",
  "fslite-command",
  "fslite-core",
  "fslite-sqlite",
@@ -468,6 +471,7 @@ dependencies = [
  "http-body-util",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tower",
  "tower-http",

@@ -15,10 +15,13 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+atomic-write-file.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 base64.workspace = true
 bytes.workspace = true
+clap.workspace = true
+directories.workspace = true
 fslite-core = { path = "../fslite-core", version = "0.1.0" }
 fslite-sqlite = { path = "../fslite-sqlite", version = "0.1.0" }
 futures.workspace = true
@@ -34,6 +37,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 fslite-command = { path = "../fslite-command" }
+tempfile.workspace = true
 
 [[example]]
 name = "server_and_remote_cli"

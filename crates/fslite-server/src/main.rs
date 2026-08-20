@@ -1,3 +1,7 @@
+mod credential_store;
+mod server_bootstrap;
+mod server_config;
+
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
