@@ -55,9 +55,9 @@ impl BootstrapResult {
         }
     }
 
-    pub(crate) fn print_connection_guidance(&self) {
+    pub(crate) fn print_connection_guidance(&self, address: SocketAddr) {
         debug_assert!(self.database_path.exists());
-        let server = format!("http://{}", self.bind);
+        let server = format!("http://{address}");
         if self.generated_token {
             println!(
                 "FSLITE_TOKEN={} fslite --server {} --workspace {} ls /",

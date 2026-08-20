@@ -15,17 +15,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
     let config = ResolvedServerConfig::load(args)?;
     let boot = server_bootstrap::bootstrap(config).await?;
+    let listener = tokio::net::TcpListener::bind(boot.bind).await?;
+    let address = listener.local_addr()?;
     if let Some(message) = boot.bootstrap_message() {
         println!("{message}");
     }
-    boot.print_connection_guidance();
+    boot.print_connection_guidance(address);
 
     let state = boot.app_state();
-    let listener = tokio::net::TcpListener::bind(boot.bind).await?;
-    println!(
-        "fslite-server listening on http://{}",
-        listener.local_addr()?
-    );
+    println!("fslite-server listening on http://{address}");
     axum::serve(listener, fslite_server::app(state)).await?;
     Ok(())
 }

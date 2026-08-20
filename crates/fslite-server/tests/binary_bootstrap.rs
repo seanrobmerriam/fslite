@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
@@ -13,7 +13,8 @@ const FIRST_RUN_MESSAGE: &str =
 
 struct RunningServer {
     child: Option<Child>,
-    lines: Receiver<String>,
+    stdout: Receiver<String>,
+    stderr: Receiver<String>,
 }
 
 impl RunningServer {
@@ -34,33 +35,59 @@ impl RunningServer {
             .spawn()
             .unwrap();
         let stdout = child.stdout.take().unwrap();
-        let (sender, lines) = mpsc::channel();
+        let stderr = child.stderr.take().unwrap();
+        let (sender, stdout_lines) = mpsc::channel();
         std::thread::spawn(move || {
-            for line in BufReader::new(stdout).lines() {
-                if sender.send(line.unwrap()).is_err() {
-                    break;
-                }
-            }
+            forward_lines(stdout, sender);
+        });
+        let (sender, stderr_lines) = mpsc::channel();
+        std::thread::spawn(move || {
+            forward_lines(stderr, sender);
         });
         Self {
             child: Some(child),
-            lines,
+            stdout: stdout_lines,
+            stderr: stderr_lines,
         }
     }
 
-    fn wait_for_listening(&self) -> (String, Vec<String>) {
+    fn wait_for_listening(&mut self) -> (String, Vec<String>) {
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut output = Vec::new();
+        let mut stderr = Vec::new();
         while Instant::now() < deadline {
+            drain_lines(&self.stderr, &mut stderr);
+            if let Some(status) = self.child_exit_status() {
+                panic!(
+                    "server exited before reporting a listening address ({status}); stderr: {}",
+                    stderr.join("\n")
+                );
+            }
             let remaining = deadline.saturating_duration_since(Instant::now());
-            if let Ok(line) = self.lines.recv_timeout(remaining) {
-                if let Some(address) = line.strip_prefix("fslite-server listening on http://") {
-                    return (address.to_owned(), output);
+            match self
+                .stdout
+                .recv_timeout(remaining.min(Duration::from_millis(50)))
+            {
+                Ok(line) => {
+                    if let Some(address) = line.strip_prefix("fslite-server listening on http://") {
+                        return (address.to_owned(), output);
+                    }
+                    output.push(line);
                 }
-                output.push(line);
+                Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {}
             }
         }
-        panic!("server did not report a listening address");
+        drain_lines(&self.stderr, &mut stderr);
+        panic!(
+            "server did not report a listening address; stderr: {}",
+            stderr.join("\n")
+        );
+    }
+
+    fn child_exit_status(&mut self) -> Option<ExitStatus> {
+        self.child
+            .as_mut()
+            .and_then(|child| child.try_wait().expect("failed to inspect server process"))
     }
 
     fn stop(&mut self) {
@@ -77,6 +104,21 @@ impl Drop for RunningServer {
     }
 }
 
+fn forward_lines(reader: impl Read, sender: mpsc::Sender<String>) {
+    for line in BufReader::new(reader).lines() {
+        let Ok(line) = line else {
+            break;
+        };
+        if sender.send(line).is_err() {
+            break;
+        }
+    }
+}
+
+fn drain_lines(receiver: &Receiver<String>, output: &mut Vec<String>) {
+    output.extend(receiver.try_iter());
+}
+
 #[tokio::test]
 async fn binary_bootstraps_once_and_reuses_the_persisted_workspace() {
     let dir = tempfile::tempdir().unwrap();
@@ -84,7 +126,7 @@ async fn binary_bootstraps_once_and_reuses_the_persisted_workspace() {
     let config_path = dir.path().join("server.json");
 
     let mut first = RunningServer::start(&database_path, &config_path);
-    let (_address, first_output) = first.wait_for_listening();
+    let (address, first_output) = first.wait_for_listening();
     assert_eq!(
         first_output
             .iter()
@@ -92,6 +134,7 @@ async fn binary_bootstraps_once_and_reuses_the_persisted_workspace() {
             .count(),
         1
     );
+    assert_eq!(advertised_address(&first_output), address);
     first.stop();
 
     let state: serde_json::Value =
@@ -157,4 +200,15 @@ fn identity_response(address: &str, token: &str) -> serde_json::Value {
     let (headers, body) = response.split_once("\r\n\r\n").unwrap();
     assert!(headers.starts_with("HTTP/1.1 200"));
     serde_json::from_str(body).unwrap()
+}
+
+fn advertised_address(output: &[String]) -> String {
+    output
+        .iter()
+        .find_map(|line| {
+            line.split_once(" fslite --server http://")
+                .and_then(|(_, command)| command.split_once(" --workspace"))
+                .map(|(address, _)| address.to_owned())
+        })
+        .expect("startup did not print a connection command")
 }

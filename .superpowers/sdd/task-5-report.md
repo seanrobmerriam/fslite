@@ -81,3 +81,36 @@ being persisted.
 ## Commit
 
 `feat(server): bootstrap persistent default workspace`
+
+## Review-fix evidence
+
+### Findings addressed
+
+1. The server now binds its `TcpListener` and reads `listener.local_addr()`
+   before printing the bootstrap message, connection command, or listening
+   line. `print_connection_guidance` receives that resolved address, so
+   `--bind 127.0.0.1:0` advertises the actual reachable port and binding
+   failures produce no success guidance.
+2. The installed-binary test drains stdout and stderr on separate background
+   readers. Its startup wait polls for early child exit and adds drained stderr
+   to timeout/exit diagnostics, avoiding an undrained-stderr pipe deadlock.
+   Diagnostics deliberately omit stdout because fresh-token guidance is
+   intentionally printed there.
+
+### RED/GREEN
+
+- RED: strengthened the installed-binary contract to compare the address in
+  the fresh-token connection command with the address from the listening line.
+  `cargo test -p fslite-server --test binary_bootstrap -- --nocapture` failed
+  as expected with advertised `127.0.0.1:0` versus the actual ephemeral port.
+- GREEN: after binding before guidance and using `listener.local_addr()`, the
+  same binary test passed.
+
+### Review-fix verification
+
+- `cargo fmt --check`
+- `cargo test -p fslite-server --bin fslite-server server_bootstrap`
+- `cargo test -p fslite-server --test binary_bootstrap -- --nocapture`
+- `cargo test -p fslite-server`
+- `cargo clippy -p fslite-server --all-targets -- -D warnings`
+- `cargo check --workspace`
