@@ -317,3 +317,41 @@ async fn reset_workspace_without_workspace_admin_capability_is_forbidden() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn reset_workspace_for_a_deleted_but_path_matching_workspace_is_not_found() {
+    let (state, workspace_id) = support::fixture().await;
+    let router = app(state);
+
+    let response = router
+        .clone()
+        .oneshot(
+            auth(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/v1/workspaces/{workspace_id}")),
+            )
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = router
+        .oneshot(
+            auth(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/workspaces/{workspace_id}/reset")),
+            )
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let error: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(error["error"]["code"], "not_found");
+}
