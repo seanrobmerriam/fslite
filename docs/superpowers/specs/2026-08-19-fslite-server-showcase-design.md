@@ -34,7 +34,7 @@ This project includes:
 - periodic sandbox reset and deterministic seed content;
 - production Dockerfiles, Compose examples, Caddy guidance, and health checks;
 - automated Rust, TypeScript, component, and browser tests; and
-- `fslite-sqlite 0.1.1` and `fslite-server 0.1.1` release preparation.
+- `fslite-sqlite 0.2.0` and `fslite-server 0.2.0` release preparation.
 
 This project does not include user accounts, per-visitor workspaces, billing,
 multi-node SQLite replication, durable public visitor content, arbitrary
@@ -177,7 +177,8 @@ The operation is added to the server's `WorkspaceAdmin` boundary and to the
 SQLite backend as an inherent administrative method. The SQLite work occurs
 in one transaction. Failure rolls back the entire reset.
 
-These changes require `fslite-sqlite 0.1.1`. `fslite-server 0.1.1` depends on
+These additive public APIs require `fslite-sqlite 0.2.0` under the repository's
+pre-1.0 semver policy. `fslite-server 0.2.0` depends on
 that release, so publication order is `fslite-sqlite` and then
 `fslite-server`.
 
@@ -436,8 +437,8 @@ pnpm --dir showcase test:e2e
 docker compose config
 ```
 
-Package dry runs verify `fslite-sqlite 0.1.1` before
-`fslite-server 0.1.1`. Container smoke tests verify non-root startup, volume
+Package dry runs verify `fslite-sqlite 0.2.0` before
+`fslite-server 0.2.0`. Container smoke tests verify non-root startup, volume
 persistence, health checks, and secret-file configuration.
 
 ## Documentation and Release
@@ -448,7 +449,7 @@ handling, Docker startup, API identity, reset authorization, and the
 difference between a reusable server and the disposable public demo.
 
 `CHANGELOG.md`, the affected crate release notes, and package versions are
-updated for `fslite-sqlite 0.1.1` and `fslite-server 0.1.1`. The server's
+updated for `fslite-sqlite 0.2.0` and `fslite-server 0.2.0`. The server's
 package metadata points to its own docs.rs page, and its external example is
 packaged correctly so `cargo publish --dry-run` has no missing-example warning.
 
