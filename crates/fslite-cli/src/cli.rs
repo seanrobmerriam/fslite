@@ -121,6 +121,10 @@ pub enum Action {
         /// Optional verb name to show detail for. Omit to list all verbs.
         verb: Option<String>,
     },
+    /// Shows the active filesystem/workspace, its database path, usage, and
+    /// whether the selection came from an explicit flag or the persisted
+    /// context. Read-only: never bootstraps or modifies any state.
+    Status,
     /// Catches every other first word: a data-plane verb (mkdir, touch,
     /// write, rm, ls, ...) and its arguments, passed through untouched to
     /// `fslite_command::parser::parse`.
@@ -310,6 +314,11 @@ mod tests {
     }
 
     #[test]
+    fn status_subcommand_does_not_externalize() {
+        assert!(matches!(parse(&["status"]).action, Some(Action::Status)));
+    }
+
+    #[test]
     fn delete_subcommand_yes_flag() {
         let cli = parse(&["delete", "main", "-y"]);
         match cli.action {
@@ -330,6 +339,7 @@ mod tests {
             Some(Action::Delete { .. }) => "Delete",
             Some(Action::Use { .. }) => "Use",
             Some(Action::Help { .. }) => "Help",
+            Some(Action::Status) => "Status",
             Some(Action::Verb(_)) => "Verb",
             None => "None",
         }

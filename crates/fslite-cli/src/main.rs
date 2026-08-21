@@ -15,6 +15,7 @@ mod context;
 mod paths;
 mod persistence;
 mod registry;
+mod status;
 #[cfg(test)]
 mod test_support;
 
@@ -45,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             name,
             workspace_name,
         }) => return use_context(name, workspace_name),
+        Some(Action::Status) => return handle_status(&cli).await,
         _ => {}
     }
 
@@ -257,6 +259,16 @@ fn resolve_workspace(
             )
             .into()
         })
+}
+
+async fn handle_status(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+    let report = status::build(cli).await?;
+    if cli.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("{}", status::render_human(&report));
+    }
+    Ok(())
 }
 
 async fn create_filesystem(
