@@ -85,6 +85,22 @@ impl SqliteFileSystem {
         workspace::workspace_usage(&self.conn, ctx.workspace_id).await
     }
 
+    /// Returns this database's current schema version.
+    pub async fn schema_version(&self) -> FsResult<i64> {
+        db::schema_version(&self.conn).await
+    }
+
+    /// The schema version this build of `fslite-sqlite` migrates to on open.
+    pub fn latest_schema_version() -> i64 {
+        db::latest_schema_version()
+    }
+
+    /// Runs SQLite's built-in integrity check, returning any problems found.
+    /// An empty vec means the database is healthy.
+    pub async fn integrity_check(&self) -> FsResult<Vec<String>> {
+        db::integrity_check(&self.conn).await
+    }
+
     /// Returns metadata for a path.
     pub async fn stat(
         &self,

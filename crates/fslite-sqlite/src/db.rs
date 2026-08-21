@@ -7,7 +7,7 @@ use tokio_rusqlite::Connection;
 
 const MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("../migrations/0001_initial.sql"))];
 
-fn latest_schema_version() -> i64 {
+pub(crate) fn latest_schema_version() -> i64 {
     MIGRATIONS.last().map(|(version, _)| *version).unwrap_or(0)
 }
 
@@ -74,6 +74,40 @@ async fn initialize(conn: &Connection, options: ConnectOptions) -> FsResult<()> 
     conn.call(move |conn| Ok(apply_migrations(conn, current_version)?))
         .await
         .map_err(map_call_error)
+}
+
+/// Returns the database's current schema version, post-migration. Since
+/// [`open_file`]/[`open_memory`] already migrate to [`latest_schema_version`]
+/// on every open, this only differs from that constant when called against
+/// a connection that bypassed `initialize` (not possible via this crate's
+/// public API) — it exists so callers have one source of truth rather than
+/// re-deriving the version from `MIGRATIONS` themselves.
+pub(crate) async fn schema_version(conn: &Connection) -> FsResult<i64> {
+    conn.call(|conn| Ok(read_current_version(conn)?))
+        .await
+        .map_err(map_call_error)
+}
+
+/// Runs SQLite's built-in `PRAGMA integrity_check` and returns the problem
+/// rows it reports. An empty vec means the database is healthy; SQLite's own
+/// single "ok" row is collapsed to empty so callers only see actual problems.
+pub(crate) async fn integrity_check(conn: &Connection) -> FsResult<Vec<String>> {
+    conn.call(|conn| {
+        let mut statement = conn.prepare("PRAGMA integrity_check")?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()?;
+        Ok(rows)
+    })
+    .await
+    .map_err(map_call_error)
+    .map(|rows| {
+        if rows.as_slice() == ["ok"] {
+            Vec::new()
+        } else {
+            rows
+        }
+    })
 }
 
 fn read_current_version(conn: &RusqliteConnection) -> rusqlite::Result<i64> {
