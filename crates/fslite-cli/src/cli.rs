@@ -125,6 +125,11 @@ pub enum Action {
     /// whether the selection came from an explicit flag or the persisted
     /// context. Read-only: never bootstraps or modifies any state.
     Status,
+    /// Validates the local registry, context, bootstrap lock, and every
+    /// registered filesystem's database (existence, schema version,
+    /// integrity, writability) and workspace. Read-only: never modifies any
+    /// state, and exits non-zero if any check fails.
+    Doctor,
     /// Catches every other first word: a data-plane verb (mkdir, touch,
     /// write, rm, ls, ...) and its arguments, passed through untouched to
     /// `fslite_command::parser::parse`.
@@ -319,6 +324,11 @@ mod tests {
     }
 
     #[test]
+    fn doctor_subcommand_does_not_externalize() {
+        assert!(matches!(parse(&["doctor"]).action, Some(Action::Doctor)));
+    }
+
+    #[test]
     fn delete_subcommand_yes_flag() {
         let cli = parse(&["delete", "main", "-y"]);
         match cli.action {
@@ -340,6 +350,7 @@ mod tests {
             Some(Action::Use { .. }) => "Use",
             Some(Action::Help { .. }) => "Help",
             Some(Action::Status) => "Status",
+            Some(Action::Doctor) => "Doctor",
             Some(Action::Verb(_)) => "Verb",
             None => "None",
         }

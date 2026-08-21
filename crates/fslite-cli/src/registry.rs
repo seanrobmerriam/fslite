@@ -57,6 +57,13 @@ impl Registry {
         self.filesystems.get(name).map(PathBuf::as_path)
     }
 
+    /// Returns every registered filesystem name, for commands (like
+    /// `doctor`) that walk the whole registry rather than one selected
+    /// filesystem.
+    pub fn filesystem_names(&self) -> Vec<&str> {
+        self.filesystems.keys().map(String::as_str).collect()
+    }
+
     pub fn register_filesystem(&mut self, name: String, path: PathBuf) {
         self.filesystems.insert(name, path);
     }

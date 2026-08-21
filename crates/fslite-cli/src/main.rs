@@ -12,6 +12,7 @@ use fslite_sqlite::SqliteFileSystem;
 mod bootstrap;
 mod cli;
 mod context;
+mod doctor;
 mod paths;
 mod persistence;
 mod registry;
@@ -47,6 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             workspace_name,
         }) => return use_context(name, workspace_name),
         Some(Action::Status) => return handle_status(&cli).await,
+        Some(Action::Doctor) => return handle_doctor(cli.json).await,
         _ => {}
     }
 
@@ -269,6 +271,16 @@ async fn handle_status(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", status::render_human(&report));
     }
     Ok(())
+}
+
+async fn handle_doctor(json: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let results = doctor::run().await;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&results)?);
+    } else {
+        println!("{}", doctor::render_human(&results));
+    }
+    std::process::exit(doctor::exit_code(&results));
 }
 
 async fn create_filesystem(
