@@ -44,6 +44,7 @@ beforeEach(() => {
   runtime.status.mockResolvedValue({
     ready: true,
     workspaceId: "ws-1",
+    activeOperations: 0,
     generation: 3,
     resetting: false,
     nextResetAt: 2_000,
@@ -89,12 +90,13 @@ describe("Astro API route contracts", () => {
     expect(statusResponse.status).toBe(200);
     expect(body).toMatchObject({
       ready: true,
-      workspaceId: "ws-1",
       generation: 3,
       resetting: false,
       nextResetAt: 2_000,
       usage: { active_nodes: 1 },
     });
+    expect(body).not.toHaveProperty("workspaceId");
+    expect(body).not.toHaveProperty("activeOperations");
     expect(body.now).toEqual(expect.any(Number));
   });
 

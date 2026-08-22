@@ -23,7 +23,7 @@ export interface BrowserStatus {
   ready: true;
   generation: number;
   resetting: boolean;
-  nextResetAt: number;
+  nextResetAt: number | null;
   now: number;
   usage: unknown;
 }
@@ -177,14 +177,18 @@ const statusSchema = z
     ready: z.literal(true),
     generation: nonNegativeInteger,
     resetting: z.boolean(),
-    nextResetAt: nonNegativeInteger,
+    nextResetAt: nonNegativeInteger.nullable(),
     now: nonNegativeInteger,
     usage: usageSchema,
   })
   .strict()
-  .refine((value) => value.nextResetAt >= value.now || value.resetting, {
-    message: "next reset must not predate status time",
-  });
+  .refine(
+    (value) =>
+      value.nextResetAt === null ||
+      value.nextResetAt >= value.now ||
+      value.resetting,
+    { message: "next reset must not predate status time" },
+  );
 const byteSchema = z.number().int().min(0).max(255);
 const byteRecordSchema = z
   .record(z.string().regex(/^\d+$/), byteSchema)
@@ -311,7 +315,7 @@ function assertStatus(value: unknown): BrowserStatus {
     ready: true,
     generation: status.generation as number,
     resetting: status.resetting as boolean,
-    nextResetAt: status.nextResetAt as number,
+    nextResetAt: status.nextResetAt as number | null,
     now: status.now as number,
     usage: status.usage,
   };

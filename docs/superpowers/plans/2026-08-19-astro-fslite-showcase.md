@@ -462,8 +462,9 @@ interface PublicError {
 
 `POST /api/operation` accepts JSON only, limits to 1 MiB, passes parsed data
 and client IP to runtime, and returns `{ data, activity }`. `GET /api/status`
-returns readiness, generation, reset state, server `now`, `nextResetAt`,
-workspace ID, and usage. Liveness never initializes upstream; readiness does.
+returns only readiness, generation, reset state, server `now`, `nextResetAt`,
+and usage. It never exposes runtime workspace IDs or active-operation counts.
+Liveness never initializes upstream; readiness does.
 
 - [ ] **Step 4: Implement streaming upload and download endpoints**
 

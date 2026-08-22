@@ -88,6 +88,23 @@ afterEach(() => {
 });
 
 describe("useShowcase", () => {
+  it("keeps a nullable reset timestamp in browser state", async () => {
+    const api = apiMock();
+    (api.status as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ready: true,
+      generation: 1,
+      resetting: true,
+      nextResetAt: null,
+      now: 1,
+      usage,
+    });
+    const { result } = renderHook(() => useShowcase(api));
+
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+
+    expect(result.current.state.status?.nextResetAt).toBeNull();
+  });
+
   it("loads status and tree once, then polls the tree without appending background activity", async () => {
     vi.useFakeTimers();
     const api = apiMock();
