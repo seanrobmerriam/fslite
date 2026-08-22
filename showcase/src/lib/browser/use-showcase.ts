@@ -1,0 +1,294 @@
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+
+import type { GatewayResult, TreeEntry } from "../shared/contracts";
+import type { VirtualPath } from "../shared/path";
+import type { PublicOperation } from "../server/schemas";
+import { ShowcaseApi, ShowcaseError } from "./api";
+import {
+  initialShowcaseState,
+  showcaseReducer,
+  type ShowcaseAction,
+} from "./reducer";
+
+const BACKGROUND_REFRESH_MS = 10_000;
+
+interface ShowcaseApiLike {
+  status(signal?: AbortSignal): ReturnType<ShowcaseApi["status"]>;
+  operation<T>(
+    operation: PublicOperation,
+    signal?: AbortSignal,
+  ): Promise<GatewayResult<T>>;
+  upload: ShowcaseApi["upload"];
+  download: ShowcaseApi["download"];
+}
+
+function isRevisionConflict(
+  error: unknown,
+): error is { code: string; message: string } {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const value = error as { code?: unknown; message?: unknown };
+  return (
+    value.code === "revision_conflict" && typeof value.message === "string"
+  );
+}
+
+function decodeText(data: unknown): string {
+  if (typeof data === "string") {
+    return data;
+  }
+  const bytes = Array.isArray(data)
+    ? data
+    : data && typeof data === "object"
+      ? Object.values(data as Record<string, unknown>)
+      : undefined;
+  if (
+    !bytes ||
+    !bytes.every(
+      (value) => typeof value === "number" && value >= 0 && value <= 255,
+    )
+  ) {
+    throw new ShowcaseError(
+      "invalid_response",
+      "The selected file is not available as text.",
+      422,
+    );
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(
+      new Uint8Array(bytes),
+    );
+  } catch {
+    throw new ShowcaseError(
+      "invalid_response",
+      "The selected file is not valid UTF-8 text.",
+      422,
+    );
+  }
+}
+
+/**
+ * The stateful React-island boundary. Browser work starts only in effects or
+ * user events, so importing and server-rendering this module remain safe.
+ */
+export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
+  const [state, dispatch] = useReducer(showcaseReducer, initialShowcaseState);
+  const stateRef = useRef(state);
+  const apiRef = useRef(api);
+  const mountedRef = useRef(false);
+  const refreshRef = useRef<AbortController | undefined>(undefined);
+  const refreshEpochRef = useRef(0);
+  const mutationRef = useRef(false);
+  stateRef.current = state;
+  apiRef.current = api;
+
+  const dispatchIfMounted = useCallback((action: ShowcaseAction) => {
+    if (mountedRef.current) {
+      dispatch(action);
+    }
+  }, []);
+
+  const refresh = useCallback(async (background = false): Promise<void> => {
+    refreshRef.current?.abort();
+    const controller = new AbortController();
+    refreshRef.current = controller;
+    const epoch = ++refreshEpochRef.current;
+    const current = () =>
+      mountedRef.current &&
+      !controller.signal.aborted &&
+      epoch === refreshEpochRef.current;
+
+    try {
+      const status = await apiRef.current.status(controller.signal);
+      if (!current()) return;
+      dispatch({ type: "status_loaded", status });
+      const tree = await apiRef.current.operation<{ items: TreeEntry[] }>(
+        { kind: "tree", path: "/" as VirtualPath },
+        controller.signal,
+      );
+      if (!current()) return;
+      dispatch({
+        type: "tree_loaded",
+        entries: tree.data.items ?? [],
+        background,
+      });
+      if (!background) {
+        dispatch({ type: "activity_appended", activity: tree.activity });
+      }
+      dispatch({ type: "error_set", error: undefined });
+    } catch (error) {
+      if (
+        current() &&
+        !(error instanceof DOMException && error.name === "AbortError")
+      ) {
+        dispatch({ type: "error_set", error: error as Error });
+      }
+    } finally {
+      if (refreshRef.current === controller) {
+        refreshRef.current = undefined;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void refresh(false);
+    const timer = globalThis.setInterval(() => {
+      void refresh(true);
+    }, BACKGROUND_REFRESH_MS);
+    return () => {
+      mountedRef.current = false;
+      globalThis.clearInterval(timer);
+      refreshEpochRef.current += 1;
+      refreshRef.current?.abort();
+      refreshRef.current = undefined;
+    };
+  }, [refresh]);
+
+  const runOperation = useCallback(
+    async <T>(operation: PublicOperation): Promise<GatewayResult<T>> => {
+      if (mutationRef.current) {
+        throw new ShowcaseError(
+          "operation_in_progress",
+          "Another operation is still running.",
+          409,
+        );
+      }
+      mutationRef.current = true;
+      refreshEpochRef.current += 1;
+      refreshRef.current?.abort();
+      dispatchIfMounted({ type: "busy_changed", busyAction: operation.kind });
+      try {
+        const result = await apiRef.current.operation<T>(operation);
+        dispatchIfMounted({
+          type: "activity_appended",
+          activity: result.activity,
+        });
+        await refresh(false);
+        return result;
+      } catch (error) {
+        if (isRevisionConflict(error) && "path" in operation) {
+          dispatchIfMounted({
+            type: "revision_conflict",
+            path: operation.path as VirtualPath,
+            message: error.message,
+          });
+        }
+        dispatchIfMounted({ type: "error_set", error: error as Error });
+        throw error;
+      } finally {
+        mutationRef.current = false;
+        dispatchIfMounted({ type: "busy_changed", busyAction: undefined });
+      }
+    },
+    [dispatchIfMounted, refresh],
+  );
+
+  const selectEntry = useCallback(
+    async (entry: TreeEntry): Promise<void> => {
+      dispatchIfMounted({ type: "selected", entry });
+      if (entry.node.kind !== "file") return;
+      try {
+        const result = await apiRef.current.operation<unknown>({
+          kind: "read_file",
+          path: entry.path,
+        });
+        if (!mountedRef.current || stateRef.current.selectedPath !== entry.path)
+          return;
+        dispatch({
+          type: "editor_loaded",
+          path: entry.path,
+          text: decodeText(result.data),
+          revision: entry.node.revision,
+        });
+        dispatch({ type: "activity_appended", activity: result.activity });
+      } catch (error) {
+        dispatchIfMounted({ type: "error_set", error: error as Error });
+      }
+    },
+    [dispatchIfMounted],
+  );
+
+  const setEditorText = useCallback(
+    (text: string) => dispatchIfMounted({ type: "editor_changed", text }),
+    [dispatchIfMounted],
+  );
+
+  const save = useCallback(async (): Promise<void> => {
+    const editor = stateRef.current.editor;
+    if (!editor.path) {
+      throw new ShowcaseError(
+        "invalid_request",
+        "Select a file before saving.",
+        400,
+      );
+    }
+    await runOperation({
+      kind: "write_file",
+      path: editor.path,
+      text: editor.text,
+      ...(editor.revision === undefined
+        ? {}
+        : { expectedRevision: editor.revision }),
+    });
+    dispatchIfMounted({
+      type: "editor_loaded",
+      path: editor.path,
+      text: editor.text,
+      revision: editor.revision ?? 1,
+    });
+  }, [dispatchIfMounted, runOperation]);
+
+  const upload = useCallback(
+    async (path: VirtualPath, file: File): Promise<void> => {
+      const result = await apiRef.current.upload(path, file);
+      dispatchIfMounted({
+        type: "activity_appended",
+        activity: result.activity,
+      });
+      await refresh(false);
+    },
+    [dispatchIfMounted, refresh],
+  );
+
+  const download = useCallback(
+    async (path: VirtualPath): Promise<void> => {
+      const result = await apiRef.current.download(path);
+      dispatchIfMounted({
+        type: "activity_appended",
+        activity: result.activity,
+      });
+    },
+    [dispatchIfMounted],
+  );
+
+  return useMemo(
+    () => ({
+      state,
+      refresh,
+      runOperation,
+      selectEntry,
+      setEditorText,
+      save,
+      upload,
+      download,
+      clearActivities: () => dispatchIfMounted({ type: "activities_cleared" }),
+      setDialog: (name: string, open: boolean) =>
+        dispatchIfMounted({ type: "dialog_changed", name, open }),
+      clearRevisionConflict: () =>
+        dispatchIfMounted({ type: "revision_conflict_cleared" }),
+    }),
+    [
+      dispatchIfMounted,
+      download,
+      refresh,
+      runOperation,
+      save,
+      selectEntry,
+      setEditorText,
+      state,
+      upload,
+    ],
+  );
+}
