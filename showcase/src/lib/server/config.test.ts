@@ -45,7 +45,7 @@ describe("loadServerConfig", () => {
       FSLITE_TOKEN: "token",
       FSLITE_RESET_INTERVAL_MS: "1200",
       FSLITE_REQUEST_TIMEOUT_MS: "750",
-      TRUST_PROXY: "true",
+      FSLITE_TRUST_PROXY: "true",
     });
 
     expect(config.serverUrl.toString()).toBe(
@@ -55,4 +55,33 @@ describe("loadServerConfig", () => {
     expect(config.requestTimeoutMs).toBe(750);
     expect(config.trustProxy).toBe(true);
   });
+
+  it.each([
+    ["true", true],
+    [" FALSE ", false],
+  ])("parses FSLITE_TRUST_PROXY=%s", (value, expected) => {
+    const config = loadServerConfig({
+      FSLITE_TOKEN: "token",
+      FSLITE_TRUST_PROXY: value,
+    });
+
+    expect(config.trustProxy).toBe(expected);
+  });
+
+  it("defaults proxy trust to false and ignores the accidental legacy variable", () => {
+    expect(loadServerConfig({ FSLITE_TOKEN: "token" }).trustProxy).toBe(false);
+    expect(
+      loadServerConfig({ FSLITE_TOKEN: "token", TRUST_PROXY: "true" })
+        .trustProxy,
+    ).toBe(false);
+  });
+
+  it.each(["1", "yes", "", "falsey"])(
+    "rejects invalid FSLITE_TRUST_PROXY=%s",
+    (value) => {
+      expect(() =>
+        loadServerConfig({ FSLITE_TOKEN: "token", FSLITE_TRUST_PROXY: value }),
+      ).toThrow("FSLITE_TRUST_PROXY must be true or false");
+    },
+  );
 });

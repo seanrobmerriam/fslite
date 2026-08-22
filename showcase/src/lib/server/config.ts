@@ -31,6 +31,21 @@ function positiveInteger(
   return parsed;
 }
 
+function parseTrustProxy(value: string | undefined): boolean {
+  if (value === undefined) {
+    return false;
+  }
+
+  switch (value.trim().toLowerCase()) {
+    case "true":
+      return true;
+    case "false":
+      return false;
+    default:
+      throw new Error("FSLITE_TRUST_PROXY must be true or false");
+  }
+}
+
 function normalizedUrl(rawUrl: string): URL {
   let url: URL;
   try {
@@ -84,6 +99,6 @@ export function loadServerConfig(
       DEFAULT_REQUEST_TIMEOUT_MS,
       "FSLITE_REQUEST_TIMEOUT_MS",
     ),
-    trustProxy: environment.TRUST_PROXY?.trim().toLowerCase() === "true",
+    trustProxy: parseTrustProxy(environment.FSLITE_TRUST_PROXY),
   };
 }

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ClientDependencies } from "./fslite-client";
 import type { ServerConfig } from "./config";
 import {
   FsliteClient,
@@ -27,8 +28,14 @@ function jsonResponse(
   });
 }
 
-function client() {
-  return new FsliteClient(config, "ws", { requestId: () => "visitor-request" });
+function client(
+  configOverrides: Partial<ServerConfig> = {},
+  dependencies: ClientDependencies = {},
+) {
+  return new FsliteClient({ ...config, ...configOverrides }, "ws", {
+    requestId: () => "visitor-request",
+    ...dependencies,
+  });
 }
 
 function installFetch(response = jsonResponse({ items: [] })) {
@@ -39,6 +46,8 @@ function installFetch(response = jsonResponse({ items: [] })) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("FsliteClient route contracts", () => {
@@ -292,5 +301,158 @@ describe("FsliteClient route contracts", () => {
     await expect(client().usage()).rejects.toBeInstanceOf(
       UpstreamResponseTooLargeError,
     );
+  });
+
+  it("keeps the timeout alive until a successful response body has been read", async () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+    let bodyController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              bodyController = controller;
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+    const request = client({}, { fetch: fetchMock }).usage();
+
+    await Promise.resolve();
+    try {
+      expect(clearTimeoutSpy).not.toHaveBeenCalled();
+      bodyController?.enqueue(
+        new TextEncoder().encode('{"workspace_id":"ws"}'),
+      );
+      bodyController?.close();
+      await expect(request).resolves.toMatchObject({
+        data: { workspace_id: "ws" },
+      });
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      bodyController?.error(new Error("test cleanup"));
+      await request.catch(() => undefined);
+    }
+  });
+
+  it("keeps the timeout alive while parsing an upstream JSON error", async () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+    let bodyController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              bodyController = controller;
+            },
+          }),
+          {
+            status: 409,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+    );
+    const request = client({}, { fetch: fetchMock }).stat(
+      validateVirtualPath("/a.txt"),
+    );
+
+    await Promise.resolve();
+    try {
+      expect(clearTimeoutSpy).not.toHaveBeenCalled();
+      bodyController?.enqueue(
+        new TextEncoder().encode(
+          '{"error":{"code":"already_exists","message":"exists","details":{}}}',
+        ),
+      );
+      bodyController?.close();
+      await expect(request).rejects.toBeInstanceOf(UpstreamApiError);
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      bodyController?.error(new Error("test cleanup"));
+      await request.catch(() => undefined);
+    }
+  });
+
+  it("aborts a stalled body after headers and surfaces only a sanitized request error", async () => {
+    vi.useFakeTimers();
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+    let signal: AbortSignal | undefined;
+    let bodyController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async (_input, init) => {
+        signal = init?.signal ?? undefined;
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              bodyController = controller;
+              signal?.addEventListener(
+                "abort",
+                () =>
+                  controller.error(
+                    new DOMException("super-secret abort", "AbortError"),
+                  ),
+                { once: true },
+              );
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      });
+    const request = client(
+      { requestTimeoutMs: 25 },
+      { fetch: fetchMock },
+    ).usage();
+    const settledRequest = request.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    await vi.advanceTimersByTimeAsync(0);
+    try {
+      expect(clearTimeoutSpy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(25);
+      expect(signal?.aborted).toBe(true);
+      await expect(settledRequest).resolves.toMatchObject({
+        name: "UpstreamRequestError",
+        requestId: "visitor-request",
+        message: expect.not.stringContaining("super-secret"),
+      });
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      bodyController?.error(new Error("test cleanup"));
+      await settledRequest;
+    }
+  });
+
+  it.each([
+    [
+      "a malformed successful JSON body",
+      new Response("{malformed super-secret", {
+        headers: { "content-type": "application/json" },
+      }),
+    ],
+    [
+      "an unreadable upstream error body",
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new Error("super-secret read failure"));
+          },
+        }),
+        { status: 500, headers: { "content-type": "application/json" } },
+      ),
+    ],
+  ])("maps %s to a sanitized request error", async (_description, response) => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
+
+    await expect(
+      client({}, { fetch: fetchMock }).usage(),
+    ).rejects.toMatchObject({
+      name: "UpstreamRequestError",
+      requestId: "visitor-request",
+      message: expect.not.stringContaining("super-secret"),
+    });
   });
 });

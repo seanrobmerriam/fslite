@@ -74,12 +74,8 @@ export class UpstreamResponseTooLargeError extends Error {
 export class UpstreamRequestError extends Error {
   readonly name = "UpstreamRequestError";
 
-  constructor(
-    readonly requestId: string,
-    cause?: unknown,
-  ) {
+  constructor(readonly requestId: string) {
     super("The upstream filesystem service is unavailable");
-    this.cause = cause;
   }
 }
 
@@ -197,15 +193,10 @@ export class FsliteClient {
     response: Response,
     requestId: string,
   ): Promise<never> {
-    let envelope: ErrorEnvelope = {};
-    try {
-      const bytes = await this.responseBytes(response, MAX_JSON_RESPONSE_BYTES);
-      envelope = JSON.parse(new TextDecoder().decode(bytes)) as ErrorEnvelope;
-    } catch (error) {
-      if (error instanceof UpstreamResponseTooLargeError) {
-        throw error;
-      }
-    }
+    const bytes = await this.responseBytes(response, MAX_JSON_RESPONSE_BYTES);
+    const envelope = JSON.parse(
+      new TextDecoder().decode(bytes),
+    ) as ErrorEnvelope;
 
     const upstreamRequestId = response.headers.get("x-request-id") || requestId;
     const errorBody = envelope.error;
@@ -246,54 +237,60 @@ export class FsliteClient {
     }
 
     const startedAt = this.now();
-    let response: Response;
     try {
-      response = await this.fetchImpl(this.route(options.path), {
+      const response = await this.fetchImpl(this.route(options.path), {
         method: options.method,
         headers,
         body: options.body,
         signal: controller.signal,
       });
+      if (!response.ok) {
+        return await this.errorFrom(response, visitorRequestId);
+      }
+
+      const requestId = redactActivityText(
+        response.headers.get("x-request-id") || visitorRequestId,
+        this.config.token,
+      );
+      const contentType = response.headers.get("content-type") || undefined;
+      const bytes = await this.responseBytes(
+        response,
+        options.binary ? MAX_BINARY_RESPONSE_BYTES : MAX_JSON_RESPONSE_BYTES,
+      );
+      const data = options.binary
+        ? (bytes as T)
+        : bytes.byteLength === 0
+          ? (undefined as T)
+          : (JSON.parse(new TextDecoder().decode(bytes)) as T);
+      const durationMs = this.now() - startedAt;
+      const activity = buildActivity({
+        token: this.config.token,
+        serverUrl: this.config.serverUrl.toString(),
+        method: options.method,
+        path: options.path,
+        status: response.status,
+        durationMs,
+        request: options.activityRequest,
+        response: options.binary ? bytes : data,
+        contentType: options.binary ? contentType : undefined,
+        requestId,
+      });
+      return options.binary
+        ? { data, activity, contentType }
+        : { data, activity };
     } catch (error) {
-      throw new UpstreamRequestError(visitorRequestId, error);
+      if (
+        error instanceof UpstreamApiError ||
+        error instanceof UpstreamResponseTooLargeError
+      ) {
+        throw error;
+      }
+      throw new UpstreamRequestError(
+        redactActivityText(visitorRequestId, this.config.token),
+      );
     } finally {
       clearTimeout(timeout);
     }
-
-    if (!response.ok) {
-      return this.errorFrom(response, visitorRequestId);
-    }
-
-    const requestId = redactActivityText(
-      response.headers.get("x-request-id") || visitorRequestId,
-      this.config.token,
-    );
-    const contentType = response.headers.get("content-type") || undefined;
-    const bytes = await this.responseBytes(
-      response,
-      options.binary ? MAX_BINARY_RESPONSE_BYTES : MAX_JSON_RESPONSE_BYTES,
-    );
-    const data = options.binary
-      ? (bytes as T)
-      : bytes.byteLength === 0
-        ? (undefined as T)
-        : (JSON.parse(new TextDecoder().decode(bytes)) as T);
-    const durationMs = this.now() - startedAt;
-    const activity = buildActivity({
-      token: this.config.token,
-      serverUrl: this.config.serverUrl.toString(),
-      method: options.method,
-      path: options.path,
-      status: response.status,
-      durationMs,
-      request: options.activityRequest,
-      response: options.binary ? bytes : data,
-      contentType: options.binary ? contentType : undefined,
-      requestId,
-    });
-    return options.binary
-      ? { data, activity, contentType }
-      : { data, activity };
   }
 
   async identity(): Promise<UpstreamResult<Identity>> {
