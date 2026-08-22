@@ -1,15 +1,15 @@
 import type { APIRoute } from "astro";
 
-import { loadServerConfig } from "../../../lib/server/config";
+import { loadServerConfig } from "../../lib/server/config";
 import {
   clientIp,
-  decodeCatchAllPath,
   gatewayErrorResponse,
   MAX_REQUEST_BYTES,
   methodNotAllowed,
   ResponseTooLargeError,
-} from "../../../lib/server/http";
-import { getShowcaseRuntime } from "../../../lib/server/runtime";
+  validateQueryPath,
+} from "../../lib/server/http";
+import { getShowcaseRuntime } from "../../lib/server/runtime";
 
 export const prerender = false;
 
@@ -22,17 +22,14 @@ function downloadFilename(path: string): string {
   return basename.replace(/[^\x20-\x7e]|[\\/"\r\n\0]/g, "_");
 }
 
-function rawCatchAllPath(request: Request): string | undefined {
-  const url = new URL(request.url);
-  const prefix = "/api/download/";
-  return url.pathname.startsWith(prefix)
-    ? url.pathname.slice(prefix.length)
-    : undefined;
-}
-
-export const GET: APIRoute = async ({ request, clientAddress }) => {
+/**
+ * Query parsing occurs once in URLSearchParams, avoiding Astro Node's dynamic
+ * route normalization of encoded dot segments before endpoint code can reject
+ * them.
+ */
+export const GET: APIRoute = async ({ request, url, clientAddress }) => {
   try {
-    const path = decodeCatchAllPath(rawCatchAllPath(request));
+    const path = validateQueryPath(url.searchParams.get("path"));
     const config = loadServerConfig();
     const result = await (
       await getShowcaseRuntime()

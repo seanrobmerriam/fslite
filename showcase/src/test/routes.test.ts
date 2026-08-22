@@ -230,14 +230,14 @@ describe("Astro API route contracts", () => {
     );
   });
 
-  it("emits only safe download headers and a sanitized attachment filename", async () => {
-    const { GET } = await import("../pages/api/download/[...path]");
+  it("emits only safe query-download headers and a sanitized attachment filename", async () => {
+    const { GET } = await import("../pages/api/download");
     const response = await GET(
       context(
-        new Request("http://showcase.test/api/download/docs/report%22%0A.bin", {
-          headers: { authorization: "Bearer browser-secret" },
-        }),
-        { path: "docs/report%22%0A.bin" },
+        new Request(
+          "http://showcase.test/api/download?path=%2Fdocs%2Freport%22%0A.bin",
+          { headers: { authorization: "Bearer browser-secret" } },
+        ),
       ) as never,
     );
 
@@ -264,13 +264,13 @@ describe("Astro API route contracts", () => {
     expect(await response.bytes()).toEqual(new Uint8Array([0, 255, 7]));
   });
 
-  it("decodes a raw catch-all exactly once and returns a request-ID-consistent invalid path error", async () => {
-    const { GET } = await import("../pages/api/download/[...path]");
+  it("validates query downloads before runtime and preserves canonical percent and Unicode names", async () => {
+    const { GET } = await import("../pages/api/download");
     const valid = await GET(
       context(
-        new Request("http://showcase.test/api/download/docs/100%2525.txt"),
-        // Astro decodes dynamic route params before invoking the endpoint.
-        { path: "docs/100%25.txt" },
+        new Request(
+          "http://showcase.test/api/download?path=%2Fdocs%2F100%2525.txt",
+        ),
       ) as never,
     );
     expect(valid.status).toBe(200);
@@ -281,10 +281,9 @@ describe("Astro API route contracts", () => {
 
     const unicode = await GET(
       context(
-        new Request("http://showcase.test/api/download/docs/%E2%98%83.txt"),
-        {
-          path: "docs/%E2%98%83.txt",
-        },
+        new Request(
+          "http://showcase.test/api/download?path=%2Fdocs%2F%E2%98%83.txt",
+        ),
       ) as never,
     );
     expect(unicode.status).toBe(200);
@@ -293,14 +292,23 @@ describe("Astro API route contracts", () => {
       "198.51.100.7",
     );
 
-    const invalid = await GET(
-      context(new Request("http://showcase.test/api/download/docs/%"), {
-        path: "docs/%",
-      }) as never,
-    );
-    expect(invalid.status).toBe(400);
-    const error = (await invalid.json()) as { error: { requestId: string } };
-    expect(invalid.headers.get("x-request-id")).toBe(error.error.requestId);
+    for (const path of [
+      "%2Fdocs%2F%2e%2e%2Fprivate.txt",
+      "%2Fdocs%2F%252e%252e%2Fprivate.txt",
+      "%2Fdocs%2F%25",
+    ]) {
+      const invalid = await GET(
+        context(
+          new Request(`http://showcase.test/api/download?path=${path}`),
+        ) as never,
+      );
+      expect(invalid.status).toBe(400);
+      const error = (await invalid.json()) as {
+        error: { requestId: string };
+      };
+      expect(invalid.headers.get("x-request-id")).toBe(error.error.requestId);
+    }
+    expect(runtime.download).toHaveBeenCalledTimes(2);
   });
 
   it("rejects an oversized download with a request-ID-consistent error", async () => {
@@ -308,11 +316,13 @@ describe("Astro API route contracts", () => {
       data: new Uint8Array(1024 * 1024 + 1),
       activity,
     });
-    const { GET } = await import("../pages/api/download/[...path]");
+    const { GET } = await import("../pages/api/download");
     const response = await GET(
-      context(new Request("http://showcase.test/api/download/docs/large.bin"), {
-        path: "docs/large.bin",
-      }) as never,
+      context(
+        new Request(
+          "http://showcase.test/api/download?path=%2Fdocs%2Flarge.bin",
+        ),
+      ) as never,
     );
 
     expect(response.status).toBe(502);
@@ -329,7 +339,7 @@ describe("Astro API route contracts", () => {
     ["ready", "../pages/api/health/ready", "GET"],
     ["operation", "../pages/api/operation", "POST"],
     ["upload", "../pages/api/upload", "POST"],
-    ["download", "../pages/api/download/[...path]", "GET"],
+    ["download", "../pages/api/download", "GET"],
   ])(
     "uses 405, Allow, and one request ID for %s",
     async (_name, module, allow) => {

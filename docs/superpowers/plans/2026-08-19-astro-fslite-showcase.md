@@ -48,7 +48,7 @@
 
 ### Browser gateway and interface
 
-- Create `showcase/src/pages/api/status.ts`, `health/live.ts`, `health/ready.ts`, `operation.ts`, `upload.ts`, and `download/[...path].ts`.
+- Create `showcase/src/pages/api/status.ts`, `health/live.ts`, `health/ready.ts`, `operation.ts`, `upload.ts`, and `download.ts`.
 - Create `showcase/src/lib/browser/api.ts`, `reducer.ts`, and `use-showcase.ts`.
 - Create focused React components under `showcase/src/components/explorer/` for status, tree, editor, dialogs, search, trash, changes, and activity.
 - Create unit/component tests beside modules as `*.test.ts`/`*.test.tsx`.
@@ -427,17 +427,17 @@ git commit -m "feat(showcase): reset and seed shared sandbox"
 - Create: `showcase/src/pages/api/health/ready.ts`
 - Create: `showcase/src/pages/api/operation.ts`
 - Create: `showcase/src/pages/api/upload.ts`
-- Create: `showcase/src/pages/api/download/[...path].ts`
+- Create: `showcase/src/pages/api/download.ts`
 - Create: `showcase/src/lib/server/http.ts`
 - Test: `showcase/src/lib/server/http.test.ts`
 
 **Interfaces:**
-- Produces: browser contract at `/api/status`, `/api/operation`, `/api/upload`, `/api/download/*`, `/api/health/live`, and `/api/health/ready`.
+- Produces: browser contract at `/api/status`, `/api/operation`, `/api/upload`, `/api/download?path=<canonical-path>`, `/api/health/live`, and `/api/health/ready`.
 
 - [ ] **Step 1: Test request parsing, IP trust, and error envelopes**
 
 Test JSON/content-type enforcement, 1 MiB upload rejection before buffering,
-`X-Forwarded-For` use only when `TRUST_PROXY=true`, malformed operation `400`,
+`X-Forwarded-For` use only when `FSLITE_TRUST_PROXY=true`, malformed operation `400`,
 rate limit `429`, reset `503` with retry data, upstream structured errors, and
 generic `502` without internal URL leakage.
 
@@ -470,12 +470,18 @@ workspace ID, and usage. Liveness never initializes upstream; readiness does.
 Upload accepts a canonical `path` query parameter and the file as its raw body,
 checks `Content-Length`, applies `readBoundedBody(request, 1_048_576)`,
 classifies against the upload limit, and writes those bytes upstream. Download
-validates the catch-all path, returns upstream bytes, and sets
+requires the same canonical `path` query parameter, returns upstream bytes, and sets
 `Content-Disposition: attachment` with a sanitized basename. It exposes only
 sanitized `X-Fslite-Method`, `X-Fslite-Path`, `X-Fslite-Status`,
 `X-Fslite-Duration-Ms`, and `X-Request-Id` headers so the browser can add the
 download to activity. Neither route buffers more than 1 MiB, and download
 never forwards upstream Authorization.
+
+> Security requirement: do not restore a dynamic or catch-all download route.
+> Astro Node constructs a Fetch URL before endpoint code runs, which resolves
+> encoded dot segments and loses the evidence required to reject them. Query
+> parsing exposes `URLSearchParams.get("path")` exactly once, allowing canonical
+> validation before runtime initialization.
 
 - [ ] **Step 5: Verify the built route manifest**
 

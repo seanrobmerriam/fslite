@@ -103,32 +103,29 @@ describe("server HTTP helpers", () => {
     expect(clientIp(request, "198.51.100.7", true)).toBe("203.0.113.8");
   });
 
-  it("keeps already-decoded query paths unchanged and decodes raw catch-all paths once", async () => {
-    const { decodeCatchAllPath, validateQueryPath } = await import("./http");
+  it("keeps canonical decoded query paths unchanged", async () => {
+    const { validateQueryPath } = await import("./http");
 
     expect(validateQueryPath("/docs/100%25.txt")).toBe("/docs/100%25.txt");
     expect(validateQueryPath("/docs/☃.txt")).toBe("/docs/☃.txt");
-    expect(decodeCatchAllPath("docs/100%2525.txt")).toBe("/docs/100%25.txt");
-    expect(decodeCatchAllPath("docs/%E2%98%83.txt")).toBe("/docs/☃.txt");
   });
 
-  it.each([["/docs/../private.txt"], ["/docs//private.txt"]])(
-    "rejects noncanonical already-decoded query paths: %s",
+  it.each([
+    ["/docs/../private.txt"],
+    ["/docs//private.txt"],
+    ["/docs/%2e%2e/private.txt"],
+    ["/docs/%2E%2E/private.txt"],
+    ["/docs/%252e%252e/private.txt"],
+    ["/docs/%2Fprivate.txt"],
+    ["/docs/%"],
+    ["/docs/%E0%A4%A"],
+  ])(
+    "rejects direct, encoded, double-encoded, and malformed query paths: %s",
     async (path) => {
       const { validateQueryPath } = await import("./http");
       expect(() => validateQueryPath(path)).toThrow("The path is invalid.");
     },
   );
-
-  it.each([
-    ["docs/%2e%2e/private.txt"],
-    ["docs/%2Fprivate.txt"],
-    ["docs/%"],
-    ["docs/%E0%A4%A"],
-  ])("rejects invalid raw catch-all paths: %s", async (path) => {
-    const { decodeCatchAllPath } = await import("./http");
-    expect(() => decodeCatchAllPath(path)).toThrow("The path is invalid.");
-  });
 
   it("returns consistent retry metadata for rate limits", async () => {
     const { gatewayErrorResponse } = await import("./http");
