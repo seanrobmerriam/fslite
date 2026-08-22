@@ -1,0 +1,296 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type { ServerConfig } from "./config";
+import {
+  FsliteClient,
+  UpstreamApiError,
+  UpstreamResponseTooLargeError,
+} from "./fslite-client";
+import { validateVirtualPath } from "../shared/path";
+
+const config: ServerConfig = {
+  serverUrl: new URL("http://server"),
+  token: "super-secret",
+  resetIntervalMs: 900_000,
+  requestTimeoutMs: 1_000,
+  trustProxy: false,
+};
+
+function jsonResponse(
+  body: unknown,
+  status = 200,
+  headers?: HeadersInit,
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...headers },
+  });
+}
+
+function client() {
+  return new FsliteClient(config, "ws", { requestId: () => "visitor-request" });
+}
+
+function installFetch(response = jsonResponse({ items: [] })) {
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("FsliteClient route contracts", () => {
+  it("uses identity, root tree, usage, and stat fixed routes", async () => {
+    const fetchMock = installFetch(
+      jsonResponse({ workspace_id: "ws", capabilities: [] }),
+    );
+    const api = client();
+
+    await api.identity();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/me",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    await api.tree(validateVirtualPath("/"));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/directories//tree?limit=250",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    await api.usage();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/usage",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    await api.stat(validateVirtualPath("/docs/hello world.md"));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/fs/docs/hello%20world.md",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("reads binary only for readFile and writes raw bytes with revisions", async () => {
+    const fetchMock = installFetch(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: { "content-type": "application/octet-stream" },
+      }),
+    );
+    const api = client();
+
+    const read = await api.readFile(validateVirtualPath("/a.bin"));
+    expect(read.data).toEqual(new Uint8Array([1, 2, 3]));
+    expect(read.contentType).toBe("application/octet-stream");
+    expect(read.activity.response).toEqual({
+      binary: true,
+      bytes: 3,
+      contentType: "application/octet-stream",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://server/v1/workspaces/ws/content/a.bin",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: "node" }));
+    const bytes = new TextEncoder().encode("hello");
+    await api.writeFile(validateVirtualPath("/a.txt"), bytes, 7);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/content/a.txt?expected_revision=7",
+      expect.objectContaining({ method: "PUT", body: bytes }),
+    );
+  });
+
+  it("uses exact mutation route methods, queries, and wire fields", async () => {
+    const fetchMock = installFetch(jsonResponse({ id: "node" }));
+    const api = client();
+    const source = validateVirtualPath("/from");
+    const target = validateVirtualPath("/to");
+
+    await api.mkdir(validateVirtualPath("/docs"), true);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/fs/docs?type=directory",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          parents: true,
+          exist_ok: false,
+          expected_revision: null,
+        }),
+      }),
+    );
+
+    await api.copy(source, target, {
+      recursive: true,
+      overwrite: true,
+      expectedRevision: 3,
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/fs/from?action=copy",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          to: "/to",
+          recursive: true,
+          overwrite: true,
+          expected_revision: 3,
+        }),
+      }),
+    );
+
+    await api.move(source, target);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/fs/from?action=move",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          to: "/to",
+          recursive: false,
+          overwrite: false,
+          expected_revision: null,
+        }),
+      }),
+    );
+
+    await api.trash(source, 9);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/fs/from?action=trash",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ expected_revision: 9 }),
+      }),
+    );
+
+    await api.remove(source, { recursive: true, expectedRevision: 11 });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/fs/from?recursive=true&expected_revision=11",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("uses exact trash, search, changes, and reset routes", async () => {
+    const fetchMock = installFetch(jsonResponse({ items: [] }));
+    const api = client();
+    const root = validateVirtualPath("/");
+
+    await api.listTrash();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/trash?limit=250",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    await api.restore("trash-1", validateVirtualPath("/restored"));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/trash/trash-1/restore",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          destination: "/restored",
+          expected_revision: null,
+        }),
+      }),
+    );
+
+    await api.purge("trash-1");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/trash/trash-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+
+    await api.glob("/*.txt");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/search/glob?pattern=%2F*.txt&limit=250",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    await api.find(root, "readme");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/search/find",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          query: { root: "/", name_contains: "readme" },
+          page: { limit: 250 },
+        }),
+      }),
+    );
+
+    await api.searchContent(root, "snowman ☃");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/search/content",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          root: "/",
+          needle_base64: "c25vd21hbiDimIM=",
+          page: { limit: 250 },
+        }),
+      }),
+    );
+
+    await api.changes("cursor value");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/changes?after=cursor%20value&limit=250",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    await api.resetWorkspace();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/reset",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("sends credentials and a visitor request id without exposing either in activity", async () => {
+    const fetchMock = installFetch(
+      jsonResponse({ workspace_id: "ws", capabilities: [] }, 200, {
+        "x-request-id": "upstream-request",
+      }),
+    );
+    const result = await client().identity();
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+
+    expect(headers.get("authorization")).toBe("Bearer super-secret");
+    expect(headers.get("x-request-id")).toBe("visitor-request");
+    expect(result.activity.requestId).toBe("upstream-request");
+    expect(JSON.stringify(result.activity)).not.toContain("super-secret");
+  });
+
+  it("turns JSON error envelopes into typed redacted errors", async () => {
+    installFetch(
+      jsonResponse(
+        {
+          error: {
+            code: "revision_conflict",
+            message: "bad super-secret",
+            details: { revision: 4, token: "super-secret" },
+          },
+        },
+        412,
+        { "x-request-id": "upstream-request" },
+      ),
+    );
+
+    await expect(
+      client().stat(validateVirtualPath("/a.txt")),
+    ).rejects.toMatchObject({
+      name: UpstreamApiError.name,
+      status: 412,
+      code: "revision_conflict",
+      requestId: "upstream-request",
+      message: expect.not.stringContaining("super-secret"),
+      details: { revision: 4, token: "[REDACTED]" },
+    });
+  });
+
+  it("rejects oversized JSON responses before unbounded buffering", async () => {
+    installFetch(jsonResponse({ payload: "x".repeat(1024 * 1024 + 1) }));
+
+    await expect(client().usage()).rejects.toBeInstanceOf(
+      UpstreamResponseTooLargeError,
+    );
+  });
+});
