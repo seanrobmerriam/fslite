@@ -6,7 +6,6 @@ import {
   type RuntimeDependencies,
 } from "./runtime";
 import type { ActivityRecord } from "../shared/contracts";
-import { validateVirtualPath } from "../shared/path";
 
 function clearRuntimeSingleton(): void {
   delete (globalThis as Record<PropertyKey, unknown>)[SHOWCASE_RUNTIME_SYMBOL];
@@ -31,6 +30,11 @@ function runtimeDependencies(
   const gateway = {
     execute: vi.fn(async () => ({ data: { kind: "execute" } })),
     upload: vi.fn(async () => ({ data: { kind: "upload" } })),
+    download: vi.fn(async () => ({
+      data: new Uint8Array([7]),
+      activity: {} as ActivityRecord,
+      contentType: "application/octet-stream",
+    })),
   };
   const coordinator = {
     start: vi.fn(async () => undefined),
@@ -126,6 +130,7 @@ describe("getShowcaseRuntime", () => {
       .mock.results[0].value as {
       execute: ReturnType<typeof vi.fn>;
       upload: ReturnType<typeof vi.fn>;
+      download: ReturnType<typeof vi.fn>;
     };
     const coordinator = (
       dependencies.createCoordinator as ReturnType<typeof vi.fn>
@@ -140,9 +145,11 @@ describe("getShowcaseRuntime", () => {
       runtime.upload("/new.txt", new Uint8Array([1]), "203.0.113.1"),
     ).resolves.toEqual({ data: { kind: "upload" } });
     await expect(
-      runtime.download(validateVirtualPath("/download.txt")),
+      runtime.download("/download.txt", "203.0.113.1"),
     ).resolves.toEqual({
       data: new Uint8Array([7]),
+      activity: {},
+      contentType: "application/octet-stream",
     });
     await expect(runtime.status()).resolves.toEqual({
       ready: true,
@@ -162,9 +169,11 @@ describe("getShowcaseRuntime", () => {
       new Uint8Array([1]),
       "203.0.113.1",
     );
-    expect(client.readFile).toHaveBeenCalledWith(
-      validateVirtualPath("/download.txt"),
+    expect(gateway.download).toHaveBeenCalledWith(
+      "/download.txt",
+      "203.0.113.1",
     );
+    expect(client.readFile).not.toHaveBeenCalled();
     expect(client.usage).toHaveBeenCalledTimes(1);
     expect(coordinator.withOperation).toHaveBeenCalledTimes(4);
     expect("resetNow" in runtime).toBe(false);

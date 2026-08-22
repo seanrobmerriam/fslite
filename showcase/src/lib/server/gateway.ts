@@ -15,7 +15,7 @@ import {
 
 export interface ShowcaseClient {
   tree(path: VirtualPath): Promise<UpstreamResult<unknown>>;
-  readFile(path: VirtualPath): Promise<UpstreamResult<unknown>>;
+  readFile(path: VirtualPath): Promise<UpstreamResult<Uint8Array>>;
   writeFile(
     path: VirtualPath,
     bytes: Uint8Array,
@@ -203,6 +203,19 @@ export class ShowcaseGateway {
     }
     this.enforce(clientIp, ["mutation", "upload"]);
     return toGatewayResult(await this.client.writeFile(validatedPath, bytes));
+  }
+
+  /**
+   * Binary downloads are a separate route from JSON operations, but retain the
+   * same canonical-path and per-IP read controls as read_file.
+   */
+  async download(
+    path: unknown,
+    clientIp: string,
+  ): Promise<UpstreamResult<Uint8Array>> {
+    const validatedPath = virtualPathSchema.parse(path);
+    this.enforce(clientIp, ["read"]);
+    return this.client.readFile(validatedPath);
   }
 
   private enforce(clientIp: string, buckets: readonly RateLimitBucket[]): void {

@@ -44,6 +44,7 @@ export class ResetCoordinator {
   private readonly zeroWaiters: Array<() => void> = [];
   private resetPromise: Promise<void> | undefined;
   private interval: IntervalHandle | undefined;
+  private disposed = false;
   private readonly now: () => number;
   private readonly resetIntervalMs: number;
   private readonly retryAfterMs: number;
@@ -117,11 +118,11 @@ export class ResetCoordinator {
   }
 
   async start(): Promise<void> {
-    if (this.interval) {
+    if (this.disposed || this.interval) {
       return;
     }
     await this.resetNow();
-    if (this.interval) {
+    if (this.disposed || this.interval) {
       return;
     }
 
@@ -132,6 +133,7 @@ export class ResetCoordinator {
   }
 
   dispose(): void {
+    this.disposed = true;
     if (!this.interval) {
       return;
     }

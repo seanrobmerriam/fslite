@@ -23,6 +23,10 @@ interface RuntimeGateway {
     bytes: Uint8Array,
     clientIp: string,
   ): Promise<GatewayResult<unknown>>;
+  download(
+    path: unknown,
+    clientIp: string,
+  ): Promise<UpstreamResult<Uint8Array>>;
 }
 
 interface RuntimeCoordinator {
@@ -58,7 +62,10 @@ export interface ShowcaseRuntime {
     bytes: Uint8Array,
     clientIp: string,
   ): Promise<GatewayResult<unknown>>;
-  download(path: VirtualPath): Promise<UpstreamResult<Uint8Array>>;
+  download(
+    path: unknown,
+    clientIp: string,
+  ): Promise<UpstreamResult<Uint8Array>>;
 }
 
 class ProcessShowcaseRuntime implements ShowcaseRuntime {
@@ -105,8 +112,13 @@ class ProcessShowcaseRuntime implements ShowcaseRuntime {
     );
   }
 
-  download(path: VirtualPath): Promise<UpstreamResult<Uint8Array>> {
-    return this.coordinator.withOperation(() => this.client.readFile(path));
+  download(
+    path: unknown,
+    clientIp: string,
+  ): Promise<UpstreamResult<Uint8Array>> {
+    return this.coordinator.withOperation(() =>
+      this.gateway.download(path, clientIp),
+    );
   }
 }
 

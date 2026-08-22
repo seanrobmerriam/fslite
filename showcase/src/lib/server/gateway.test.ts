@@ -128,6 +128,45 @@ describe("ShowcaseGateway", () => {
     expect(result.activity).toBe(activity);
   });
 
+  it("validates and rate-limits a binary download while preserving upstream bytes, activity, and content type", async () => {
+    const api = client();
+    const binary = {
+      data: new Uint8Array([0, 255, 7]),
+      activity,
+      contentType: "application/octet-stream",
+    };
+    api.readFile.mockResolvedValue(binary);
+    const gateway = new ShowcaseGateway(api);
+
+    await expect(
+      gateway.download("/docs/archive.bin", "203.0.113.1"),
+    ).resolves.toBe(binary);
+    expect(api.readFile).toHaveBeenCalledWith(
+      validateVirtualPath("/docs/archive.bin"),
+    );
+
+    await expect(
+      gateway.download("../private.bin", "203.0.113.1"),
+    ).rejects.toThrow("path must be canonical and absolute");
+    expect(api.readFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares the 120-per-minute read bucket with JSON read operations", async () => {
+    const api = client();
+    const gateway = new ShowcaseGateway(api);
+
+    for (let request = 0; request < 119; request += 1) {
+      await gateway.execute({ kind: "tree", path: "/examples" }, "203.0.113.1");
+    }
+    await gateway.download("/examples/hello.txt", "203.0.113.1");
+
+    await expect(
+      gateway.download("/examples/hello.txt", "203.0.113.1"),
+    ).rejects.toMatchObject({ bucket: "read" });
+    expect(api.tree).toHaveBeenCalledTimes(119);
+    expect(api.readFile).toHaveBeenCalledTimes(1);
+  });
+
   it("confirms the current trash entry name before purging without returning lookup activity", async () => {
     const api = client();
     const gateway = new ShowcaseGateway(api);
