@@ -112,6 +112,34 @@ describe("FsliteClient route contracts", () => {
     );
   });
 
+  it("re-encodes literal percent path segments on the fixed content route", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(new Uint8Array([1])))
+      .mockResolvedValueOnce(new Response(new Uint8Array([2])))
+      .mockResolvedValueOnce(new Response(new Uint8Array([3])));
+    vi.stubGlobal("fetch", fetchMock);
+    const api = client();
+
+    await api.readFile(validateVirtualPath("/docs/100%.txt"));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/content/docs/100%25.txt",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    await api.readFile(validateVirtualPath("/docs/%25.txt"));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/content/docs/%2525.txt",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    await api.readFile(validateVirtualPath("/docs/%2e%2e.txt"));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "http://server/v1/workspaces/ws/content/docs/%252e%252e.txt",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("uses exact mutation route methods, queries, and wire fields", async () => {
     const fetchMock = installFetch(jsonResponse({ id: "node" }));
     const api = client();

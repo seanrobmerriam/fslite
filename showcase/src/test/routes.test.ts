@@ -264,18 +264,44 @@ describe("Astro API route contracts", () => {
     expect(await response.bytes()).toEqual(new Uint8Array([0, 255, 7]));
   });
 
-  it("validates query downloads before runtime and preserves canonical percent and Unicode names", async () => {
+  it("validates query downloads once before runtime and preserves canonical percent and Unicode names", async () => {
     const { GET } = await import("../pages/api/download");
-    const valid = await GET(
+    const literalPercent = await GET(
+      context(
+        new Request(
+          "http://showcase.test/api/download?path=%2Fdocs%2F100%25.txt",
+        ),
+      ) as never,
+    );
+    expect(literalPercent.status).toBe(200);
+    expect(runtime.download).toHaveBeenCalledWith(
+      "/docs/100%.txt",
+      "198.51.100.7",
+    );
+
+    const encodedPercent = await GET(
       context(
         new Request(
           "http://showcase.test/api/download?path=%2Fdocs%2F100%2525.txt",
         ),
       ) as never,
     );
-    expect(valid.status).toBe(200);
+    expect(encodedPercent.status).toBe(200);
     expect(runtime.download).toHaveBeenCalledWith(
       "/docs/100%25.txt",
+      "198.51.100.7",
+    );
+
+    const doubleEncodedTraversalName = await GET(
+      context(
+        new Request(
+          "http://showcase.test/api/download?path=%2Fdocs%2F%252e%252e%2Fprivate.txt",
+        ),
+      ) as never,
+    );
+    expect(doubleEncodedTraversalName.status).toBe(200);
+    expect(runtime.download).toHaveBeenCalledWith(
+      "/docs/%2e%2e/private.txt",
       "198.51.100.7",
     );
 
@@ -292,11 +318,7 @@ describe("Astro API route contracts", () => {
       "198.51.100.7",
     );
 
-    for (const path of [
-      "%2Fdocs%2F%2e%2e%2Fprivate.txt",
-      "%2Fdocs%2F%252e%252e%2Fprivate.txt",
-      "%2Fdocs%2F%25",
-    ]) {
+    for (const path of ["%2Fdocs%2F%2e%2e%2Fprivate.txt"]) {
       const invalid = await GET(
         context(
           new Request(`http://showcase.test/api/download?path=${path}`),
@@ -308,7 +330,7 @@ describe("Astro API route contracts", () => {
       };
       expect(invalid.headers.get("x-request-id")).toBe(error.error.requestId);
     }
-    expect(runtime.download).toHaveBeenCalledTimes(2);
+    expect(runtime.download).toHaveBeenCalledTimes(4);
   });
 
   it("rejects an oversized download with a request-ID-consistent error", async () => {

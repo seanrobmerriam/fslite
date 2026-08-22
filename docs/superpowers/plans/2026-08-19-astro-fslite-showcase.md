@@ -480,8 +480,13 @@ never forwards upstream Authorization.
 > Security requirement: do not restore a dynamic or catch-all download route.
 > Astro Node constructs a Fetch URL before endpoint code runs, which resolves
 > encoded dot segments and loses the evidence required to reject them. Query
-> parsing exposes `URLSearchParams.get("path")` exactly once, allowing canonical
-> validation before runtime initialization.
+> parsing exposes `URLSearchParams.get("path")` exactly once. Validate that
+> decoded value directly with `validateVirtualPath` before runtime
+> initialization; never decode it a second time. A singly encoded `%2e%2e`
+> query segment becomes `..` and is rejected, whereas a double-encoded
+> `%252e%252e` becomes the literal filename segment `%2e%2e`. The fixed
+> `FsliteClient` content route re-encodes each validated segment, including `%`
+> as `%25`, so literal percent names cannot normalize into traversal upstream.
 
 - [ ] **Step 5: Verify the built route manifest**
 

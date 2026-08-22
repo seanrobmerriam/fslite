@@ -155,42 +155,11 @@ function validatePath(value: string): VirtualPath {
   }
 }
 
-function assertEncodedPathRemainsCanonical(path: VirtualPath): void {
-  let candidate = path as string;
-  let decodedAtLeastOnce = false;
-
-  while (candidate.includes("%")) {
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(candidate);
-    } catch {
-      // A literal percent may be a valid filename character after an earlier
-      // query decode. A malformed first encoding is never accepted.
-      if (decodedAtLeastOnce) {
-        return;
-      }
-      throw new PublicRequestError(
-        400,
-        "invalid_request",
-        "The path is invalid.",
-      );
-    }
-    decodedAtLeastOnce = true;
-    validatePath(decoded);
-    if (decoded === candidate) {
-      return;
-    }
-    candidate = decoded;
-  }
-}
-
-/** Validates a path returned by URLSearchParams, which is already decoded. */
+/** Validates the exactly-once-decoded value returned by URLSearchParams. */
 export function validateQueryPath(
   value: string | null | undefined,
 ): VirtualPath {
-  const path = validatePath(requiredPath(value));
-  assertEncodedPathRemainsCanonical(path);
-  return path;
+  return validatePath(requiredPath(value));
 }
 
 /** Resolves a direct peer address unless ServerConfig explicitly trusts a proxy. */
