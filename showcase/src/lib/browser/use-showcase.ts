@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
-import type { GatewayResult, TreeEntry } from "../shared/contracts";
+import type { GatewayResult, Node, TreeEntry } from "../shared/contracts";
 import type { VirtualPath } from "../shared/path";
 import type { PublicOperation } from "../server/schemas";
 import { ShowcaseApi, ShowcaseError } from "./api";
@@ -79,7 +79,10 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
   const mountedRef = useRef(false);
   const refreshRef = useRef<AbortController | undefined>(undefined);
   const refreshEpochRef = useRef(0);
+  const readRef = useRef<AbortController | undefined>(undefined);
+  const readEpochRef = useRef(0);
   const mutationRef = useRef(false);
+  const mutationControllerRef = useRef<AbortController | undefined>(undefined);
   stateRef.current = state;
   apiRef.current = api;
 
@@ -143,11 +146,20 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
       refreshEpochRef.current += 1;
       refreshRef.current?.abort();
       refreshRef.current = undefined;
+      readEpochRef.current += 1;
+      readRef.current?.abort();
+      readRef.current = undefined;
+      mutationControllerRef.current?.abort();
+      mutationControllerRef.current = undefined;
     };
   }, [refresh]);
 
-  const runOperation = useCallback(
-    async <T>(operation: PublicOperation): Promise<GatewayResult<T>> => {
+  const runMutation = useCallback(
+    async <T>(
+      busyAction: string,
+      mutation: (signal: AbortSignal) => Promise<GatewayResult<T>>,
+      conflictPath?: VirtualPath,
+    ): Promise<GatewayResult<T>> => {
       if (mutationRef.current) {
         throw new ShowcaseError(
           "operation_in_progress",
@@ -156,11 +168,16 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
         );
       }
       mutationRef.current = true;
+      const controller = new AbortController();
+      mutationControllerRef.current = controller;
       refreshEpochRef.current += 1;
       refreshRef.current?.abort();
-      dispatchIfMounted({ type: "busy_changed", busyAction: operation.kind });
+      dispatchIfMounted({ type: "busy_changed", busyAction });
       try {
-        const result = await apiRef.current.operation<T>(operation);
+        const result = await mutation(controller.signal);
+        if (!mountedRef.current || controller.signal.aborted) {
+          return result;
+        }
         dispatchIfMounted({
           type: "activity_appended",
           activity: result.activity,
@@ -168,10 +185,10 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
         await refresh(false);
         return result;
       } catch (error) {
-        if (isRevisionConflict(error) && "path" in operation) {
+        if (isRevisionConflict(error) && conflictPath) {
           dispatchIfMounted({
             type: "revision_conflict",
-            path: operation.path as VirtualPath,
+            path: conflictPath,
             message: error.message,
           });
         }
@@ -179,32 +196,70 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
         throw error;
       } finally {
         mutationRef.current = false;
+        if (mutationControllerRef.current === controller) {
+          mutationControllerRef.current = undefined;
+        }
         dispatchIfMounted({ type: "busy_changed", busyAction: undefined });
       }
     },
     [dispatchIfMounted, refresh],
   );
 
+  const runOperation = useCallback(
+    <T>(operation: PublicOperation): Promise<GatewayResult<T>> =>
+      runMutation(
+        operation.kind,
+        (signal) => apiRef.current.operation<T>(operation, signal),
+        "path" in operation ? (operation.path as VirtualPath) : undefined,
+      ),
+    [runMutation],
+  );
+
   const selectEntry = useCallback(
     async (entry: TreeEntry): Promise<void> => {
+      readEpochRef.current += 1;
+      readRef.current?.abort();
+      const controller = new AbortController();
+      readRef.current = controller;
+      const epoch = readEpochRef.current;
+      const current = () =>
+        mountedRef.current &&
+        !controller.signal.aborted &&
+        epoch === readEpochRef.current;
       dispatchIfMounted({ type: "selected", entry });
-      if (entry.node.kind !== "file") return;
+      if (entry.node.kind !== "file") {
+        readRef.current = undefined;
+        return;
+      }
       try {
-        const result = await apiRef.current.operation<unknown>({
-          kind: "read_file",
-          path: entry.path,
-        });
-        if (!mountedRef.current || stateRef.current.selectedPath !== entry.path)
-          return;
+        const result = await apiRef.current.operation<unknown>(
+          {
+            kind: "read_file",
+            path: entry.path,
+          },
+          controller.signal,
+        );
+        if (!current()) return;
+        const text = decodeText(result.data);
+        if (!current()) return;
         dispatch({
           type: "editor_loaded",
           path: entry.path,
-          text: decodeText(result.data),
+          text,
           revision: entry.node.revision,
         });
         dispatch({ type: "activity_appended", activity: result.activity });
       } catch (error) {
-        dispatchIfMounted({ type: "error_set", error: error as Error });
+        if (
+          current() &&
+          !(error instanceof DOMException && error.name === "AbortError")
+        ) {
+          dispatch({ type: "error_set", error: error as Error });
+        }
+      } finally {
+        if (readRef.current === controller) {
+          readRef.current = undefined;
+        }
       }
     },
     [dispatchIfMounted],
@@ -224,7 +279,7 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
         400,
       );
     }
-    await runOperation({
+    const result = await runOperation<Node>({
       kind: "write_file",
       path: editor.path,
       text: editor.text,
@@ -233,23 +288,20 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
         : { expectedRevision: editor.revision }),
     });
     dispatchIfMounted({
-      type: "editor_loaded",
+      type: "editor_saved",
       path: editor.path,
       text: editor.text,
-      revision: editor.revision ?? 1,
+      revision: result.data.revision,
     });
   }, [dispatchIfMounted, runOperation]);
 
   const upload = useCallback(
     async (path: VirtualPath, file: File): Promise<void> => {
-      const result = await apiRef.current.upload(path, file);
-      dispatchIfMounted({
-        type: "activity_appended",
-        activity: result.activity,
-      });
-      await refresh(false);
+      await runMutation("upload", (signal) =>
+        apiRef.current.upload(path, file, signal),
+      );
     },
-    [dispatchIfMounted, refresh],
+    [runMutation],
   );
 
   const download = useCallback(
@@ -268,6 +320,7 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
       state,
       refresh,
       runOperation,
+      runMutation,
       selectEntry,
       setEditorText,
       save,
@@ -284,6 +337,7 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
       download,
       refresh,
       runOperation,
+      runMutation,
       save,
       selectEntry,
       setEditorText,

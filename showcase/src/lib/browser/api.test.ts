@@ -2,6 +2,45 @@ import { describe, expect, it, vi } from "vitest";
 
 import { MAX_BROWSER_FILE_BYTES, ShowcaseApi, ShowcaseError } from "./api";
 
+const usage = {
+  workspace_id: "workspace-redacted-from-ui",
+  active_logical_bytes: 1,
+  trashed_logical_bytes: 0,
+  staged_bytes: 0,
+  active_nodes: 1,
+  trashed_nodes: 0,
+  max_logical_bytes: 10,
+  max_nodes: 250,
+  max_file_bytes: 1024 * 1024,
+};
+
+const node = {
+  workspace_id: usage.workspace_id,
+  id: "node-1",
+  parent_id: null,
+  name: "readme.txt",
+  kind: "file",
+  logical_size: 5,
+  created_at_ms: 1,
+  modified_at_ms: 2,
+  accessed_at_ms: 3,
+  revision: 4,
+  attributes: {},
+};
+
+const validActivity = {
+  id: "activity-1",
+  timestamp: "2026-08-22T00:00:00.000Z",
+  method: "GET",
+  path: "/safe",
+  status: 200,
+  durationMs: 1,
+  requestId: "request-1",
+  request: null,
+  response: null,
+  curl: "curl -X GET /safe",
+};
+
 const activityHeaders = new Headers({
   "x-fslite-method": "GET",
   "x-fslite-path": "/v1/workspaces/private/content/report.txt",
@@ -15,8 +54,8 @@ describe("ShowcaseApi", () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
       new Response(
         JSON.stringify({
-          data: { items: [] },
-          activity: { id: "a", method: "GET", path: "/safe", status: 200 },
+          data: { items: [], next_cursor: null },
+          activity: validActivity,
         }),
         { headers: { "content-type": "application/json" } },
       ),
@@ -94,7 +133,7 @@ describe("ShowcaseApi", () => {
 
   it("sends a bounded file as a raw same-origin upload body", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ data: {}, activity: { id: "upload" } }), {
+      new Response(JSON.stringify({ data: node, activity: validActivity }), {
         headers: { "content-type": "application/json" },
       }),
     );
@@ -182,5 +221,171 @@ describe("ShowcaseApi", () => {
       requestId: "request-1",
     });
     expect(JSON.stringify(result.activity)).not.toContain("workspaces");
+  });
+
+  it("removes every C0 control and DEL from local download activity headers", async () => {
+    const response = {
+      ok: true,
+      status: 200,
+      blob: async () => new Blob(["contents"]),
+      headers: {
+        get: (name: string) =>
+          ({
+            "x-fslite-method": "GET",
+            "x-fslite-status": "200",
+            "x-fslite-duration-ms": "12",
+            "x-request-id": "request\u0001\u001f\u007fend",
+          })[name] ?? null,
+      },
+    } as unknown as Response;
+    const api = new ShowcaseApi({
+      fetch: vi.fn<typeof globalThis.fetch>().mockResolvedValue(response),
+      document: () => document,
+      objectUrl: {
+        createObjectURL: vi.fn(() => "blob:controls"),
+        revokeObjectURL: vi.fn(),
+      },
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+      () => undefined,
+    );
+
+    const result = await api.download("/docs/report.txt" as never);
+
+    expect(result.activity.requestId).toBe("request___end");
+    expect(
+      [...result.activity.requestId].some((character) => {
+        const code = character.codePointAt(0) ?? 0;
+        return code <= 0x1f || code === 0x7f;
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects malformed, extra, and incoherent public envelopes", async () => {
+    const api = new ShowcaseApi({
+      fetch: vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ ...validActivity, extra: true }), {
+            headers: { "content-type": "application/json" },
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: "bad",
+                message: "no",
+                status: 700,
+                extra: true,
+              },
+            }),
+            { status: 502, headers: { "content-type": "application/json" } },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              ready: true,
+              generation: 1,
+              resetting: false,
+              nextResetAt: 1,
+              now: 2,
+              usage: { ...usage, extra: true },
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        ),
+    });
+
+    await expect(api.operation({ kind: "usage" })).rejects.toMatchObject({
+      code: "invalid_response",
+    });
+    await expect(api.operation({ kind: "usage" })).rejects.toMatchObject({
+      code: "invalid_response",
+    });
+    await expect(api.status()).rejects.toMatchObject({
+      code: "invalid_response",
+    });
+  });
+
+  it("validates each operation against its expected response data shape", async () => {
+    const operations = [
+      { kind: "tree", path: "/" },
+      { kind: "read_file", path: "/readme.txt" },
+      { kind: "write_file", path: "/readme.txt", text: "next" },
+      { kind: "mkdir", path: "/docs", parents: false },
+      { kind: "copy", from: "/a", to: "/b", recursive: false },
+      { kind: "move", from: "/a", to: "/b" },
+      { kind: "trash", path: "/a" },
+      { kind: "remove", path: "/a", recursive: false, confirmedPath: "/a" },
+      { kind: "list_trash" },
+      {
+        kind: "restore",
+        trashId: "0180c914-c06f-7ea1-8f12-123456789abc",
+      },
+      {
+        kind: "purge",
+        trashId: "0180c914-c06f-7ea1-8f12-123456789abc",
+        confirmedName: "a",
+      },
+      { kind: "glob", pattern: "/**" },
+      { kind: "find", root: "/", nameContains: "a" },
+      { kind: "search_content", root: "/", text: "a" },
+      { kind: "changes" },
+      { kind: "usage" },
+    ] as const;
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    for (let index = 0; index < operations.length; index += 1) {
+      fetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: { unexpected: true },
+            activity: validActivity,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      );
+    }
+    const api = new ShowcaseApi({ fetch });
+
+    for (const operation of operations) {
+      await expect(api.operation(operation as never)).rejects.toMatchObject({
+        code: "invalid_response",
+      });
+    }
+  });
+
+  it("accepts strict status and write-file node responses", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ready: true,
+            generation: 1,
+            resetting: false,
+            nextResetAt: 100,
+            now: 1,
+            usage,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: node, activity: validActivity }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    const api = new ShowcaseApi({ fetch });
+
+    await expect(api.status()).resolves.toMatchObject({ usage });
+    await expect(
+      api.operation({
+        kind: "write_file",
+        path: "/readme.txt" as never,
+        text: "next",
+      }),
+    ).resolves.toMatchObject({ data: { revision: 4 } });
   });
 });

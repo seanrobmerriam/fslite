@@ -5,6 +5,7 @@ import type {
 } from "../shared/contracts";
 import type { VirtualPath } from "../shared/path";
 import type { PublicOperation } from "../server/schemas";
+import { z } from "zod";
 
 export const MAX_BROWSER_FILE_BYTES = 1024 * 1024;
 
@@ -52,36 +53,223 @@ export interface ShowcaseApiDependencies {
   objectUrl?: ObjectUrlApi;
 }
 
+const safeString = z.string().min(1).max(4_096);
+const nonNegativeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const publicStatus = z.number().int().min(100).max(599);
+const hasControlCharacter = (value: string) =>
+  [...value].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 0x1f || code === 0x7f;
+  });
+const publicPath = z
+  .string()
+  .min(1)
+  .max(4_096)
+  .refine((value) => value.startsWith("/") && !hasControlCharacter(value));
+const requestId = z.string().regex(/^[A-Za-z0-9._-]{1,128}$/);
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.boolean(),
+    z.number().refine(Number.isFinite),
+    z.string(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+const nodeSchema = z
+  .object({
+    workspace_id: safeString,
+    id: safeString,
+    parent_id: safeString.nullable(),
+    name: z.string().min(1).max(255),
+    kind: z.enum(["directory", "file", "symlink"]),
+    logical_size: nonNegativeInteger,
+    created_at_ms: nonNegativeInteger,
+    modified_at_ms: nonNegativeInteger,
+    accessed_at_ms: nonNegativeInteger,
+    revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    attributes: z.record(z.string(), jsonValueSchema),
+  })
+  .strict();
+const treeEntrySchema = z
+  .object({ path: publicPath, depth: nonNegativeInteger, node: nodeSchema })
+  .strict();
+const trashEntrySchema = z
+  .object({
+    id: safeString,
+    node: nodeSchema,
+    original_path: publicPath,
+    trashed_at_ms: nonNegativeInteger,
+    actor_metadata: z.record(z.string(), jsonValueSchema),
+  })
+  .strict();
+const changeSchema = z
+  .object({
+    sequence: nonNegativeInteger,
+    kind: z.enum([
+      "created",
+      "modified",
+      "copied",
+      "moved",
+      "removed",
+      "trashed",
+      "restored",
+      "purged",
+      "attribute_set",
+      "attribute_removed",
+    ]),
+    node_id: safeString.nullable(),
+    old_path: publicPath.nullable(),
+    new_path: publicPath.nullable(),
+    revision: z
+      .number()
+      .int()
+      .positive()
+      .max(Number.MAX_SAFE_INTEGER)
+      .nullable(),
+    created_at_ms: nonNegativeInteger,
+    actor_metadata: z.record(z.string(), jsonValueSchema),
+  })
+  .strict();
+const usageSchema = z
+  .object({
+    workspace_id: safeString,
+    active_logical_bytes: nonNegativeInteger,
+    trashed_logical_bytes: nonNegativeInteger,
+    staged_bytes: nonNegativeInteger,
+    active_nodes: nonNegativeInteger,
+    trashed_nodes: nonNegativeInteger,
+    max_logical_bytes: nonNegativeInteger,
+    max_nodes: nonNegativeInteger,
+    max_file_bytes: nonNegativeInteger,
+  })
+  .strict();
+const activitySchema = z
+  .object({
+    id: safeString,
+    timestamp: z.iso.datetime({ offset: true }),
+    method: z.enum(["GET", "POST", "PUT", "DELETE"]),
+    path: publicPath,
+    status: publicStatus,
+    durationMs: z.number().int().min(0).max(3_600_000),
+    requestId,
+    request: jsonValueSchema.nullable(),
+    response: jsonValueSchema.nullable(),
+    curl: z.string().min(1).max(8_192),
+  })
+  .strict();
+const errorSchema = z
+  .object({
+    error: z
+      .object({
+        code: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+        message: z.string().min(1).max(1_024),
+        status: publicStatus,
+        requestId: requestId.optional(),
+        retryAfterMs: nonNegativeInteger.optional(),
+      })
+      .strict(),
+  })
+  .strict();
+const statusSchema = z
+  .object({
+    ready: z.literal(true),
+    generation: nonNegativeInteger,
+    resetting: z.boolean(),
+    nextResetAt: nonNegativeInteger,
+    now: nonNegativeInteger,
+    usage: usageSchema,
+  })
+  .strict()
+  .refine((value) => value.nextResetAt >= value.now || value.resetting, {
+    message: "next reset must not predate status time",
+  });
+const byteSchema = z.number().int().min(0).max(255);
+const byteRecordSchema = z
+  .record(z.string().regex(/^\d+$/), byteSchema)
+  .superRefine((value, context) => {
+    const keys = Object.keys(value)
+      .map(Number)
+      .sort((left, right) => left - right);
+    if (keys.some((key, index) => key !== index)) {
+      context.addIssue({
+        code: "custom",
+        message: "byte data must be contiguous",
+      });
+    }
+  });
+const readFileSchema = z.union([z.array(byteSchema), byteRecordSchema]);
+const page = <T extends z.ZodTypeAny>(item: T) =>
+  z
+    .object({ items: z.array(item), next_cursor: z.string().min(1).nullable() })
+    .strict();
+const searchMatchSchema = z
+  .object({
+    node: nodeSchema,
+    path: publicPath,
+    range: z
+      .object({ start: nonNegativeInteger, end: nonNegativeInteger })
+      .strict()
+      .refine((value) => value.end >= value.start),
+    preview_base64: z.string().min(1).max(4_194_304),
+  })
+  .strict();
+
+function operationDataSchema(operation: PublicOperation): z.ZodTypeAny {
+  switch (operation.kind) {
+    case "tree":
+      return page(treeEntrySchema);
+    case "read_file":
+      return readFileSchema;
+    case "write_file":
+    case "mkdir":
+    case "copy":
+    case "move":
+    case "restore":
+      return nodeSchema;
+    case "trash":
+      return trashEntrySchema;
+    case "remove":
+    case "purge":
+      return z.null().optional();
+    case "list_trash":
+      return page(trashEntrySchema);
+    case "glob":
+    case "find":
+      return page(nodeSchema);
+    case "search_content":
+      return page(searchMatchSchema);
+    case "changes":
+      return page(changeSchema);
+    case "usage":
+      return usageSchema;
+    default: {
+      const exhaustive: never = operation;
+      return exhaustive;
+    }
+  }
+}
+
+function invalidResponse(message: string): ShowcaseError {
+  return new ShowcaseError("invalid_response", message, 502);
+}
+
 function errorFromEnvelope(
   value: unknown,
   fallbackStatus: number,
 ): ShowcaseError {
-  if (
-    value &&
-    typeof value === "object" &&
-    "error" in value &&
-    value.error &&
-    typeof value.error === "object"
-  ) {
-    const error = value.error as Record<string, unknown>;
-    if (
-      typeof error.code === "string" &&
-      typeof error.message === "string" &&
-      typeof error.status === "number"
-    ) {
-      return new ShowcaseError(
-        error.code,
-        error.message,
-        error.status,
-        typeof error.requestId === "string" ? error.requestId : undefined,
-        typeof error.retryAfterMs === "number" ? error.retryAfterMs : undefined,
-      );
-    }
+  const parsed = errorSchema.safeParse(value);
+  if (!parsed.success || parsed.data.error.status !== fallbackStatus) {
+    return invalidResponse("The showcase returned an invalid error response.");
   }
+  const error = parsed.data.error;
   return new ShowcaseError(
-    "invalid_response",
-    "The showcase returned an invalid error response.",
-    fallbackStatus,
+    error.code,
+    error.message,
+    error.status,
+    error.requestId,
+    error.retryAfterMs,
   );
 }
 
@@ -93,39 +281,32 @@ async function json(response: Response): Promise<unknown> {
   }
 }
 
-function assertGatewayResult<T>(value: unknown): GatewayResult<T> {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    !("data" in value) ||
-    !("activity" in value)
-  ) {
-    throw new ShowcaseError(
-      "invalid_response",
-      "The showcase returned an invalid response.",
-      502,
+function assertGatewayResult<T>(
+  value: unknown,
+  operation: PublicOperation,
+): GatewayResult<T> {
+  const envelope = z
+    .object({ data: z.unknown().optional(), activity: activitySchema })
+    .strict()
+    .safeParse(value);
+  if (!envelope.success) {
+    throw invalidResponse("The showcase returned an invalid response.");
+  }
+  const data = operationDataSchema(operation).safeParse(envelope.data.data);
+  if (!data.success) {
+    throw invalidResponse(
+      "The showcase returned an invalid operation response.",
     );
   }
-  return value as GatewayResult<T>;
+  return { data: data.data as T, activity: envelope.data.activity };
 }
 
 function assertStatus(value: unknown): BrowserStatus {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    (value as Record<string, unknown>).ready !== true ||
-    typeof (value as Record<string, unknown>).generation !== "number" ||
-    typeof (value as Record<string, unknown>).resetting !== "boolean" ||
-    typeof (value as Record<string, unknown>).nextResetAt !== "number" ||
-    typeof (value as Record<string, unknown>).now !== "number"
-  ) {
-    throw new ShowcaseError(
-      "invalid_response",
-      "The showcase returned an invalid status response.",
-      502,
-    );
+  const parsed = statusSchema.safeParse(value);
+  if (!parsed.success) {
+    throw invalidResponse("The showcase returned an invalid status response.");
   }
-  const status = value as Record<string, unknown>;
+  const status = parsed.data;
   return {
     ready: true,
     generation: status.generation as number,
@@ -144,7 +325,12 @@ function safeHeader(
   if (!value) {
     return fallback;
   }
-  return value.replace(/[\r\n\0]/g, "_").slice(0, maximum) || fallback;
+  return (
+    [...value]
+      .map((character) => (hasControlCharacter(character) ? "_" : character))
+      .join("")
+      .slice(0, maximum) || fallback
+  );
 }
 
 function safeMethod(value: string | null): string {
@@ -232,7 +418,7 @@ export class ShowcaseApi {
     if (!response.ok) {
       throw errorFromEnvelope(body, response.status);
     }
-    return assertGatewayResult<T>(body);
+    return assertGatewayResult<T>(body, operation);
   }
 
   async upload(
@@ -260,7 +446,16 @@ export class ShowcaseApi {
     if (!response.ok) {
       throw errorFromEnvelope(body, response.status);
     }
-    return assertGatewayResult(body);
+    const envelope = z
+      .object({ data: nodeSchema, activity: activitySchema })
+      .strict()
+      .safeParse(body);
+    if (!envelope.success) {
+      throw invalidResponse(
+        "The showcase returned an invalid upload response.",
+      );
+    }
+    return envelope.data;
   }
 
   async download(

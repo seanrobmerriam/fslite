@@ -2,6 +2,9 @@ import type { ActivityRecord, Node, TreeEntry } from "../shared/contracts";
 import type { VirtualPath } from "../shared/path";
 import type { BrowserStatus, ShowcaseError } from "./api";
 
+/** The activity drawer keeps a bounded, chronological local history. */
+export const MAX_ACTIVITY_RECORDS = 100;
+
 export interface EditorState {
   path: VirtualPath | undefined;
   text: string;
@@ -36,6 +39,7 @@ export type ShowcaseAction =
   | { type: "tree_loaded"; entries: readonly TreeEntry[]; background: boolean }
   | { type: "selected"; entry: TreeEntry }
   | { type: "editor_loaded"; path: VirtualPath; text: string; revision: number }
+  | { type: "editor_saved"; path: VirtualPath; text: string; revision: number }
   | { type: "editor_changed"; text: string }
   | { type: "busy_changed"; busyAction: string | undefined }
   | { type: "dialog_changed"; name: string; open: boolean }
@@ -95,6 +99,17 @@ export function showcaseReducer(
       if (state.editor.dirty && state.editor.path !== action.path) {
         return state;
       }
+      if (state.editor.dirty) {
+        return {
+          ...state,
+          editor: {
+            ...state.editor,
+            original: action.text,
+            revision: action.revision,
+            dirty: state.editor.text !== action.text,
+          },
+        };
+      }
       return {
         ...state,
         editor: {
@@ -103,6 +118,20 @@ export function showcaseReducer(
           original: action.text,
           revision: action.revision,
           dirty: false,
+        },
+        revisionConflict: undefined,
+      };
+    case "editor_saved":
+      if (state.editor.path !== action.path) {
+        return state;
+      }
+      return {
+        ...state,
+        editor: {
+          ...state.editor,
+          original: action.text,
+          revision: action.revision,
+          dirty: state.editor.text !== action.text,
         },
         revisionConflict: undefined,
       };
@@ -122,7 +151,12 @@ export function showcaseReducer(
     case "changes_loaded":
       return { ...state, changesResults: action.results };
     case "activity_appended":
-      return { ...state, activities: [...state.activities, action.activity] };
+      return {
+        ...state,
+        activities: [...state.activities, action.activity].slice(
+          -MAX_ACTIVITY_RECORDS,
+        ),
+      };
     case "activities_cleared":
       return { ...state, activities: [] };
     case "error_set":

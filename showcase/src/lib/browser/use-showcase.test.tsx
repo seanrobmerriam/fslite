@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { TreeEntry } from "../shared/contracts";
+import type { VirtualPath } from "../shared/path";
 import type { ShowcaseApi } from "./api";
 import { useShowcase } from "./use-showcase";
 
@@ -17,6 +19,54 @@ const activity = {
   curl: "curl",
 };
 
+const usage = {
+  workspace_id: "not-rendered",
+  active_logical_bytes: 1,
+  trashed_logical_bytes: 0,
+  staged_bytes: 0,
+  active_nodes: 1,
+  trashed_nodes: 0,
+  max_logical_bytes: 10,
+  max_nodes: 250,
+  max_file_bytes: 1024,
+};
+
+const fileEntry = {
+  path: "/readme.txt" as VirtualPath,
+  depth: 0,
+  node: {
+    workspace_id: usage.workspace_id,
+    id: "node-1",
+    parent_id: null,
+    name: "readme.txt",
+    kind: "file" as const,
+    logical_size: 4,
+    created_at_ms: 1,
+    modified_at_ms: 1,
+    accessed_at_ms: 1,
+    revision: 3,
+    attributes: {},
+  },
+} satisfies TreeEntry;
+
+const tree = { items: [fileEntry], next_cursor: null };
+
+function bytes(text: string) {
+  return Object.fromEntries(
+    [...new TextEncoder().encode(text)].map((byte, index) => [index, byte]),
+  );
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
+}
+
 function apiMock() {
   return {
     status: vi.fn().mockResolvedValue({
@@ -25,9 +75,9 @@ function apiMock() {
       resetting: false,
       nextResetAt: 100,
       now: 1,
-      usage: {},
+      usage,
     }),
-    operation: vi.fn().mockResolvedValue({ data: { items: [] }, activity }),
+    operation: vi.fn().mockResolvedValue({ data: tree, activity }),
     upload: vi.fn(),
     download: vi.fn(),
   } as unknown as ShowcaseApi;
@@ -113,9 +163,292 @@ describe("useShowcase", () => {
         resetting: false,
         nextResetAt: 1,
         now: 1,
-        usage: {},
+        usage,
       });
     });
     expect(result.current.state.status).toBeUndefined();
+  });
+
+  it("uses returned write revisions for consecutive saves without rereading", async () => {
+    const api = apiMock();
+    let revision = 3;
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation) => {
+        if (operation.kind === "tree") {
+          return Promise.resolve({ data: tree, activity });
+        }
+        if (operation.kind === "read_file") {
+          return Promise.resolve({ data: bytes("base"), activity });
+        }
+        if (operation.kind === "write_file") {
+          revision += 1;
+          return Promise.resolve({
+            data: { ...fileEntry.node, revision },
+            activity: { ...activity, id: `write-${revision}` },
+          });
+        }
+        throw new Error(`unexpected ${operation.kind}`);
+      },
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    await act(async () => {
+      await result.current.selectEntry(fileEntry);
+    });
+
+    act(() => result.current.setEditorText("first"));
+    await act(async () => {
+      await result.current.save();
+    });
+    act(() => result.current.setEditorText("second"));
+    await act(async () => {
+      await result.current.save();
+    });
+
+    const writes = (api.operation as ReturnType<typeof vi.fn>).mock.calls
+      .map(([operation]) => operation)
+      .filter((operation) => operation.kind === "write_file");
+    expect(writes).toEqual([
+      expect.objectContaining({ expectedRevision: 3, text: "first" }),
+      expect.objectContaining({ expectedRevision: 4, text: "second" }),
+    ]);
+    expect(
+      (api.operation as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([operation]) => operation.kind === "read_file",
+      ),
+    ).toHaveLength(1);
+    expect(result.current.state.editor).toMatchObject({
+      text: "second",
+      original: "second",
+      revision: 5,
+      dirty: false,
+    });
+  });
+
+  it("aborts and ignores stale same-path read successes and errors", async () => {
+    const api = apiMock();
+    const first = deferred<{ data: unknown; activity: typeof activity }>();
+    const second = deferred<{ data: unknown; activity: typeof activity }>();
+    const signals: AbortSignal[] = [];
+    let reads = 0;
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation, signal) => {
+        if (operation.kind === "tree") {
+          return Promise.resolve({ data: tree, activity });
+        }
+        if (operation.kind !== "read_file") {
+          throw new Error(`unexpected ${operation.kind}`);
+        }
+        signals.push(signal);
+        reads += 1;
+        return reads === 1 ? first.promise : second.promise;
+      },
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+
+    let firstSelection!: Promise<void>;
+    let secondSelection!: Promise<void>;
+    act(() => {
+      firstSelection = result.current.selectEntry(fileEntry);
+      secondSelection = result.current.selectEntry(fileEntry);
+    });
+    expect(signals[0]?.aborted).toBe(true);
+    await act(async () => {
+      second.resolve({ data: bytes("latest"), activity });
+      await secondSelection;
+    });
+    await act(async () => {
+      first.reject(new Error("stale read"));
+      await firstSelection;
+    });
+
+    expect(result.current.state.editor).toMatchObject({
+      text: "latest",
+      original: "latest",
+      dirty: false,
+    });
+    expect(result.current.state.error).toBeUndefined();
+  });
+
+  it("preserves user typing when a current same-path read settles after editing", async () => {
+    const api = apiMock();
+    const delayed = deferred<{ data: unknown; activity: typeof activity }>();
+    let reads = 0;
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation) => {
+        if (operation.kind === "tree") {
+          return Promise.resolve({ data: tree, activity });
+        }
+        if (operation.kind === "read_file") {
+          reads += 1;
+          return reads === 1
+            ? Promise.resolve({ data: bytes("base"), activity })
+            : delayed.promise;
+        }
+        throw new Error(`unexpected ${operation.kind}`);
+      },
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    await act(async () => {
+      await result.current.selectEntry(fileEntry);
+    });
+    let reload!: Promise<void>;
+    act(() => {
+      reload = result.current.selectEntry(fileEntry);
+    });
+    act(() => result.current.setEditorText("local"));
+    await act(async () => {
+      delayed.resolve({ data: bytes("new base"), activity });
+      await reload;
+    });
+
+    expect(result.current.state.editor).toMatchObject({
+      text: "local",
+      original: "new base",
+      revision: 3,
+      dirty: true,
+    });
+  });
+
+  it("aborts an in-flight file read on unmount and ignores its late result", async () => {
+    const api = apiMock();
+    const pendingRead = deferred<{
+      data: unknown;
+      activity: typeof activity;
+    }>();
+    let signal: AbortSignal | undefined;
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation, nextSignal) => {
+        if (operation.kind === "tree") {
+          return Promise.resolve({ data: tree, activity });
+        }
+        signal = nextSignal;
+        return pendingRead.promise;
+      },
+    );
+    const { result, unmount } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    await waitFor(() => expect(api.operation).toHaveBeenCalledTimes(1));
+    let selection!: Promise<void>;
+    act(() => {
+      selection = result.current.selectEntry(fileEntry);
+    });
+    unmount();
+    expect(signal?.aborted).toBe(true);
+    await act(async () => {
+      pendingRead.resolve({ data: bytes("late"), activity });
+      await selection;
+    });
+    expect(result.current.state.editor.path).toBeUndefined();
+  });
+
+  it("routes uploads through mutation lifecycle and reports failures without retries", async () => {
+    const api = apiMock();
+    const pendingUpload = deferred<{
+      data: unknown;
+      activity: typeof activity;
+    }>();
+    (api.upload as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      pendingUpload.promise,
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    await waitFor(() => expect(api.operation).toHaveBeenCalledTimes(1));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.upload(
+        "/new.txt" as never,
+        new File(["new"], "new.txt"),
+      );
+    });
+    expect(result.current.state.busyAction).toBe("upload");
+    await act(async () => {
+      pendingUpload.resolve({
+        data: {},
+        activity: { ...activity, id: "upload" },
+      });
+      await pending;
+    });
+    expect(result.current.state.busyAction).toBeUndefined();
+    expect(result.current.state.activities).toContainEqual(
+      expect.objectContaining({ id: "upload" }),
+    );
+
+    (api.upload as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("upload failed"),
+    );
+    await act(async () => {
+      await expect(
+        result.current.upload(
+          "/fail.txt" as never,
+          new File(["x"], "fail.txt"),
+        ),
+      ).rejects.toThrow("upload failed");
+    });
+    expect(api.upload).toHaveBeenCalledTimes(2);
+    expect(result.current.state.error).toMatchObject({
+      message: "upload failed",
+    });
+  });
+
+  it("prevents upload and JSON mutations from overlapping in either direction", async () => {
+    const api = apiMock();
+    const pendingUpload = deferred<{
+      data: unknown;
+      activity: typeof activity;
+    }>();
+    const pendingOperation = deferred<{
+      data: unknown;
+      activity: typeof activity;
+    }>();
+    (api.upload as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      pendingUpload.promise,
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    await waitFor(() => expect(api.operation).toHaveBeenCalledTimes(1));
+
+    let upload!: Promise<void>;
+    act(() => {
+      upload = result.current.upload(
+        "/new.txt" as never,
+        new File(["new"], "new.txt"),
+      );
+    });
+    await expect(
+      result.current.runOperation({
+        kind: "mkdir",
+        path: "/blocked" as never,
+        parents: false,
+      }),
+    ).rejects.toMatchObject({ code: "operation_in_progress" });
+    await act(async () => {
+      pendingUpload.resolve({ data: {}, activity });
+      await upload;
+    });
+
+    (api.operation as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      pendingOperation.promise,
+    );
+    let operation!: Promise<unknown>;
+    act(() => {
+      operation = result.current.runOperation({
+        kind: "mkdir",
+        path: "/new-dir" as never,
+        parents: false,
+      });
+    });
+    await expect(
+      result.current.upload(
+        "/blocked.txt" as never,
+        new File(["x"], "blocked.txt"),
+      ),
+    ).rejects.toMatchObject({ code: "operation_in_progress" });
+    await act(async () => {
+      pendingOperation.resolve({ data: {}, activity });
+      await operation;
+    });
   });
 });

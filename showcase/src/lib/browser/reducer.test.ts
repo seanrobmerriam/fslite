@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_ACTIVITY_RECORDS,
   initialShowcaseState,
   showcaseReducer,
   type ShowcaseState,
@@ -111,6 +112,70 @@ describe("showcaseReducer", () => {
 
     expect(appended.activities).toEqual([activity]);
     expect(cleared.activities).toEqual([]);
+  });
+
+  it("retains the 100 newest activity records in chronological order", () => {
+    const state = Array.from({
+      length: MAX_ACTIVITY_RECORDS + 5,
+    }).reduce<ShowcaseState>(
+      (current, _, index) =>
+        showcaseReducer(current, {
+          type: "activity_appended",
+          activity: {
+            id: String(index),
+            timestamp: "2026-08-22T00:00:00.000Z",
+            method: "GET",
+            path: "/safe",
+            status: 200,
+            durationMs: 0,
+            requestId: String(index),
+            request: null,
+            response: null,
+            curl: "curl",
+          },
+        }),
+      initialShowcaseState,
+    );
+
+    expect(state.activities).toHaveLength(MAX_ACTIVITY_RECORDS);
+    expect(state.activities[0]?.id).toBe("5");
+    expect(state.activities.at(-1)?.id).toBe(String(MAX_ACTIVITY_RECORDS + 4));
+  });
+
+  it("preserves a matching dirty edit while adopting a coherent loaded baseline", () => {
+    const state = reduce(
+      { type: "editor_loaded", path: entry.path, text: "server", revision: 3 },
+      { type: "editor_changed", text: "local unsaved" },
+      {
+        type: "editor_loaded",
+        path: entry.path,
+        text: "new server",
+        revision: 4,
+      },
+    );
+
+    expect(state.editor).toEqual({
+      path: entry.path,
+      text: "local unsaved",
+      original: "new server",
+      revision: 4,
+      dirty: true,
+    });
+  });
+
+  it("uses a write response as the editor baseline without discarding later typing", () => {
+    const state = reduce(
+      { type: "editor_loaded", path: entry.path, text: "server", revision: 3 },
+      { type: "editor_changed", text: "saved" },
+      { type: "editor_saved", path: entry.path, text: "saved", revision: 4 },
+    );
+
+    expect(state.editor).toMatchObject({
+      text: "saved",
+      original: "saved",
+      revision: 4,
+      dirty: false,
+    });
   });
 
   it("records a revision conflict without overwriting the local edit", () => {
