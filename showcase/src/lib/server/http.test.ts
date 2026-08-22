@@ -65,6 +65,34 @@ describe("server HTTP helpers", () => {
     expect(cancelled).toBe(true);
   });
 
+  it.each([
+    ["203.0.113.8, 198.51.100.9", "203.0.113.8"],
+    ["  2001:db8::8 , 2001:db8::9", "2001:db8::8"],
+    ["", "198.51.100.7"],
+    ["not-an-ip", "198.51.100.7"],
+    ['"203.0.113.8"', "198.51.100.7"],
+    ["[2001:db8::8]", "198.51.100.7"],
+    ["203.0.113.8:443", "198.51.100.7"],
+    ["[2001:db8::8]:443", "198.51.100.7"],
+    ["fe80::8%en0", "198.51.100.7"],
+    ["203.0.113.8\n198.51.100.9", "198.51.100.7"],
+    ["203.0.113.8\0", "198.51.100.7"],
+  ])(
+    "uses only a plain first XFF IP literal when trusted: %j",
+    async (forwarded, expected) => {
+      const { clientIp } = await import("./http");
+      const request = {
+        headers: {
+          get: (name: string) =>
+            name === "x-forwarded-for" ? forwarded : null,
+        },
+      } as unknown as Request;
+
+      expect(clientIp(request, "198.51.100.7", true)).toBe(expected);
+      expect(clientIp(request, "198.51.100.7", false)).toBe("198.51.100.7");
+    },
+  );
+
   it("uses forwarded client addresses only when ServerConfig trusts the proxy", async () => {
     const { clientIp } = await import("./http");
     const request = new Request("http://showcase.test/api/status", {
@@ -73,6 +101,33 @@ describe("server HTTP helpers", () => {
 
     expect(clientIp(request, "198.51.100.7", false)).toBe("198.51.100.7");
     expect(clientIp(request, "198.51.100.7", true)).toBe("203.0.113.8");
+  });
+
+  it("keeps already-decoded query paths unchanged and decodes raw catch-all paths once", async () => {
+    const { decodeCatchAllPath, validateQueryPath } = await import("./http");
+
+    expect(validateQueryPath("/docs/100%25.txt")).toBe("/docs/100%25.txt");
+    expect(validateQueryPath("/docs/☃.txt")).toBe("/docs/☃.txt");
+    expect(decodeCatchAllPath("docs/100%2525.txt")).toBe("/docs/100%25.txt");
+    expect(decodeCatchAllPath("docs/%E2%98%83.txt")).toBe("/docs/☃.txt");
+  });
+
+  it.each([["/docs/../private.txt"], ["/docs//private.txt"]])(
+    "rejects noncanonical already-decoded query paths: %s",
+    async (path) => {
+      const { validateQueryPath } = await import("./http");
+      expect(() => validateQueryPath(path)).toThrow("The path is invalid.");
+    },
+  );
+
+  it.each([
+    ["docs/%2e%2e/private.txt"],
+    ["docs/%2Fprivate.txt"],
+    ["docs/%"],
+    ["docs/%E0%A4%A"],
+  ])("rejects invalid raw catch-all paths: %s", async (path) => {
+    const { decodeCatchAllPath } = await import("./http");
+    expect(() => decodeCatchAllPath(path)).toThrow("The path is invalid.");
   });
 
   it("returns consistent retry metadata for rate limits", async () => {
@@ -119,14 +174,14 @@ describe("server HTTP helpers", () => {
     });
   });
 
-  it("keeps structured upstream client errors public without leaking URLs or tokens", async () => {
+  it("maps an allowlisted structured upstream error to a fixed public message", async () => {
     const { gatewayErrorResponse } = await import("./http");
     const { UpstreamApiError } = await import("./fslite-client");
     const response = gatewayErrorResponse(
       new UpstreamApiError(
         412,
         "revision_conflict",
-        "The current revision does not match.",
+        "file:///private/workspace/secret.txt Bearer accidental-secret",
         null,
         "upstream-123",
       ),
@@ -136,19 +191,39 @@ describe("server HTTP helpers", () => {
     await expect(response.json()).resolves.toEqual({
       error: {
         code: "revision_conflict",
-        message: "The current revision does not match.",
+        message: "The file changed before the operation completed.",
         status: 412,
         requestId: "upstream-123",
       },
     });
+  });
 
-    const generic = gatewayErrorResponse(
-      new Error("http://private.example.test/token/secret stack trace"),
-      "request-456",
+  it.each([
+    "file:///private/workspace/secret.txt",
+    "ftp://private.example.test/secret",
+    "custom-scheme://private.example.test/secret",
+    "/var/private/secret.txt",
+    "Bearer random-secret-value",
+    "line one\nline two",
+    "<script>alert('secret')</script>",
+  ])("never reflects arbitrary upstream error text: %s", async (message) => {
+    const { gatewayErrorResponse } = await import("./http");
+    const { UpstreamApiError } = await import("./fslite-client");
+    const response = gatewayErrorResponse(
+      new UpstreamApiError(
+        409,
+        "unknown_upstream_code",
+        message,
+        null,
+        "upstream-123",
+      ),
     );
-    expect(generic.status).toBe(502);
-    const body = await generic.text();
-    expect(body).not.toContain("private.example.test");
+
+    expect(response.status).toBe(409);
+    const body = await response.text();
+    expect(body).toContain("The filesystem service rejected the request.");
+    expect(body).not.toContain(message);
     expect(body).not.toContain("secret");
+    expect(body).not.toContain("private");
   });
 });

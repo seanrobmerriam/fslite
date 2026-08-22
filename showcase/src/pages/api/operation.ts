@@ -7,6 +7,7 @@ import {
   isJsonRequest,
   json,
   methodNotAllowed,
+  PublicRequestError,
   readBoundedBody,
 } from "../../lib/server/http";
 import { getShowcaseRuntime } from "../../lib/server/runtime";
@@ -15,15 +16,12 @@ export const prerender = false;
 
 export const POST: APIRoute = async ({ request, clientAddress }) => {
   if (!isJsonRequest(request)) {
-    return json(
-      {
-        error: {
-          code: "unsupported_media_type",
-          message: "Content-Type must be application/json.",
-          status: 415,
-        },
-      },
-      { status: 415 },
+    return gatewayErrorResponse(
+      new PublicRequestError(
+        415,
+        "unsupported_media_type",
+        "Content-Type must be application/json.",
+      ),
     );
   }
 

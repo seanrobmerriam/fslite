@@ -7,13 +7,14 @@ const runtime = {
   upload: vi.fn(),
   download: vi.fn(),
 };
+const config = { trustProxy: false };
 
 vi.mock("../lib/server/runtime", () => ({
   getShowcaseRuntime: vi.fn(async () => runtime),
 }));
 
 vi.mock("../lib/server/config", () => ({
-  loadServerConfig: vi.fn(() => ({ trustProxy: false })),
+  loadServerConfig: vi.fn(() => config),
 }));
 
 function context(
@@ -38,6 +39,7 @@ const activity = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  config.trustProxy = false;
   runtime.readiness.mockResolvedValue({ ready: true, workspaceId: "ws-1" });
   runtime.status.mockResolvedValue({
     ready: true,
@@ -96,7 +98,7 @@ describe("Astro API route contracts", () => {
     expect(body.now).toEqual(expect.any(Number));
   });
 
-  it("requires JSON and routes parsed operations with the direct client address", async () => {
+  it("uses one request ID for direct media-type errors", async () => {
     const { POST } = await import("../pages/api/operation");
     const rejected = await POST(
       context(
@@ -108,6 +110,12 @@ describe("Astro API route contracts", () => {
       ) as never,
     );
     expect(rejected.status).toBe(415);
+    const error = (await rejected.json()) as { error: { requestId: string } };
+    expect(rejected.headers.get("x-request-id")).toBe(error.error.requestId);
+  });
+
+  it("requires JSON and routes parsed operations with the direct client address", async () => {
+    const { POST } = await import("../pages/api/operation");
 
     const response = await POST(
       context(
@@ -165,6 +173,63 @@ describe("Astro API route contracts", () => {
     );
   });
 
+  it("does not decode already-decoded upload query paths a second time", async () => {
+    const { POST } = await import("../pages/api/upload");
+    const response = await POST(
+      context(
+        new Request(
+          "http://showcase.test/api/upload?path=%2Fdocs%2F100%2525.txt",
+          { method: "POST", body: new Uint8Array([1]) },
+        ),
+      ) as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect(runtime.upload).toHaveBeenCalledWith(
+      "/docs/100%25.txt",
+      new Uint8Array([1]),
+      "198.51.100.7",
+    );
+  });
+
+  it("rejects a query path whose URL decoding creates traversal", async () => {
+    const { POST } = await import("../pages/api/upload");
+    const response = await POST(
+      context(
+        new Request(
+          "http://showcase.test/api/upload?path=%2Fdocs%2F%2e%2e%2Fprivate.txt",
+          { method: "POST", body: new Uint8Array([1]) },
+        ),
+      ) as never,
+    );
+
+    expect(response.status).toBe(400);
+    expect(runtime.upload).not.toHaveBeenCalled();
+  });
+
+  it("uses a valid trusted XFF address for runtime rate-limit identity", async () => {
+    config.trustProxy = true;
+    const { POST } = await import("../pages/api/operation");
+    const response = await POST(
+      context(
+        new Request("http://showcase.test/api/operation", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-forwarded-for": "2001:db8::8, 198.51.100.9",
+          },
+          body: JSON.stringify({ kind: "usage" }),
+        }),
+      ) as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect(runtime.execute).toHaveBeenCalledWith(
+      { kind: "usage" },
+      "2001:db8::8",
+    );
+  });
+
   it("emits only safe download headers and a sanitized attachment filename", async () => {
     const { GET } = await import("../pages/api/download/[...path]");
     const response = await GET(
@@ -199,15 +264,86 @@ describe("Astro API route contracts", () => {
     expect(await response.bytes()).toEqual(new Uint8Array([0, 255, 7]));
   });
 
-  it("uses 405 and Allow for an unsupported endpoint method", async () => {
-    const { ALL } = await import("../pages/api/operation");
-    const response = await ALL(
+  it("decodes a raw catch-all exactly once and returns a request-ID-consistent invalid path error", async () => {
+    const { GET } = await import("../pages/api/download/[...path]");
+    const valid = await GET(
       context(
-        new Request("http://showcase.test/api/operation", { method: "GET" }),
+        new Request("http://showcase.test/api/download/docs/100%2525.txt"),
+        // Astro decodes dynamic route params before invoking the endpoint.
+        { path: "docs/100%25.txt" },
       ) as never,
     );
+    expect(valid.status).toBe(200);
+    expect(runtime.download).toHaveBeenCalledWith(
+      "/docs/100%25.txt",
+      "198.51.100.7",
+    );
 
-    expect(response.status).toBe(405);
-    expect(response.headers.get("allow")).toBe("POST");
+    const unicode = await GET(
+      context(
+        new Request("http://showcase.test/api/download/docs/%E2%98%83.txt"),
+        {
+          path: "docs/%E2%98%83.txt",
+        },
+      ) as never,
+    );
+    expect(unicode.status).toBe(200);
+    expect(runtime.download).toHaveBeenCalledWith(
+      "/docs/☃.txt",
+      "198.51.100.7",
+    );
+
+    const invalid = await GET(
+      context(new Request("http://showcase.test/api/download/docs/%"), {
+        path: "docs/%",
+      }) as never,
+    );
+    expect(invalid.status).toBe(400);
+    const error = (await invalid.json()) as { error: { requestId: string } };
+    expect(invalid.headers.get("x-request-id")).toBe(error.error.requestId);
   });
+
+  it("rejects an oversized download with a request-ID-consistent error", async () => {
+    runtime.download.mockResolvedValueOnce({
+      data: new Uint8Array(1024 * 1024 + 1),
+      activity,
+    });
+    const { GET } = await import("../pages/api/download/[...path]");
+    const response = await GET(
+      context(new Request("http://showcase.test/api/download/docs/large.bin"), {
+        path: "docs/large.bin",
+      }) as never,
+    );
+
+    expect(response.status).toBe(502);
+    const error = (await response.json()) as {
+      error: { code: string; requestId: string };
+    };
+    expect(error.error.code).toBe("upstream_response_too_large");
+    expect(response.headers.get("x-request-id")).toBe(error.error.requestId);
+  });
+
+  it.each([
+    ["status", "../pages/api/status", "GET"],
+    ["live", "../pages/api/health/live", "GET"],
+    ["ready", "../pages/api/health/ready", "GET"],
+    ["operation", "../pages/api/operation", "POST"],
+    ["upload", "../pages/api/upload", "POST"],
+    ["download", "../pages/api/download/[...path]", "GET"],
+  ])(
+    "uses 405, Allow, and one request ID for %s",
+    async (_name, module, allow) => {
+      const { ALL } = (await import(module)) as {
+        ALL: (context: never) => Promise<Response> | Response;
+      };
+      const response = await ALL(
+        context(new Request("http://showcase.test/api/unsupported")) as never,
+      );
+
+      expect(response.status).toBe(405);
+      expect(response.headers.get("allow")).toBe(allow);
+      const error = (await response.json()) as { error: { requestId: string } };
+      expect(response.headers.get("x-request-id")).toBe(error.error.requestId);
+    },
+  );
 });

@@ -3,7 +3,7 @@ import type { APIRoute } from "astro";
 import { loadServerConfig } from "../../../lib/server/config";
 import {
   clientIp,
-  decodeCanonicalPath,
+  decodeCatchAllPath,
   gatewayErrorResponse,
   MAX_REQUEST_BYTES,
   methodNotAllowed,
@@ -19,12 +19,20 @@ function headerText(value: string | number): string {
 
 function downloadFilename(path: string): string {
   const basename = path.split("/").at(-1) || "download";
-  return basename.replace(/[\\/"\r\n\0]/g, "_");
+  return basename.replace(/[^\x20-\x7e]|[\\/"\r\n\0]/g, "_");
 }
 
-export const GET: APIRoute = async ({ request, params, clientAddress }) => {
+function rawCatchAllPath(request: Request): string | undefined {
+  const url = new URL(request.url);
+  const prefix = "/api/download/";
+  return url.pathname.startsWith(prefix)
+    ? url.pathname.slice(prefix.length)
+    : undefined;
+}
+
+export const GET: APIRoute = async ({ request, clientAddress }) => {
   try {
-    const path = decodeCanonicalPath(params.path, true);
+    const path = decodeCatchAllPath(rawCatchAllPath(request));
     const config = loadServerConfig();
     const result = await (
       await getShowcaseRuntime()

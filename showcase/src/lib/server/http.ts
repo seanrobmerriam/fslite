@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { ZodError } from "zod";
 
 import { validateVirtualPath, type VirtualPath } from "../shared/path";
@@ -60,19 +61,13 @@ function safeRequestId(value: string | undefined): string {
   return value && /^[A-Za-z0-9._-]{1,128}$/.test(value) ? value : requestId();
 }
 
-function publicMessage(message: string, fallback: string): string {
-  const candidate = message.trim();
-  if (
-    candidate.length === 0 ||
-    candidate.length > 512 ||
-    /[\r\n\0]|https?:\/\/|\b(?:authorization|bearer|token|stack)\b/i.test(
-      candidate,
-    )
-  ) {
-    return fallback;
-  }
-  return candidate;
-}
+const UPSTREAM_PUBLIC_MESSAGES: Readonly<Record<string, string>> = {
+  already_exists: "The destination already exists.",
+  invalid_request: "The filesystem service rejected the request.",
+  not_found: "The requested item was not found.",
+  quota_exceeded: "The workspace quota does not allow this operation.",
+  revision_conflict: "The file changed before the operation completed.",
+};
 
 function publicCode(value: string): string {
   return /^[a-z][a-z0-9_]{0,63}$/.test(value) ? value : "upstream_error";
@@ -141,18 +136,39 @@ export async function readBoundedBody(
   return bytes;
 }
 
-/** Decodes the browser path exactly once and preserves the shared path policy. */
-export function decodeCanonicalPath(
-  value: string | null | undefined,
-  catchAll = false,
-): VirtualPath {
+function requiredPath(value: string | null | undefined): string {
   if (value === undefined || value === null || value === "") {
     throw new PublicRequestError(400, "invalid_request", "A path is required.");
   }
-  const rawPath = catchAll ? `/${value}` : value;
+  return value;
+}
+
+function validatePath(value: string): VirtualPath {
+  try {
+    return validateVirtualPath(value);
+  } catch {
+    throw new PublicRequestError(
+      400,
+      "invalid_request",
+      "The path is invalid.",
+    );
+  }
+}
+
+/** Validates a path returned by URLSearchParams, which is already decoded. */
+export function validateQueryPath(
+  value: string | null | undefined,
+): VirtualPath {
+  return validatePath(requiredPath(value));
+}
+
+/** Decodes the raw dynamic catch-all once before applying virtual-path policy. */
+export function decodeCatchAllPath(
+  value: string | null | undefined,
+): VirtualPath {
   let decoded: string;
   try {
-    decoded = decodeURIComponent(rawPath);
+    decoded = decodeURIComponent(`/${requiredPath(value)}`);
   } catch {
     throw new PublicRequestError(
       400,
@@ -160,15 +176,7 @@ export function decodeCanonicalPath(
       "The path is invalid.",
     );
   }
-  try {
-    return validateVirtualPath(decoded);
-  } catch {
-    throw new PublicRequestError(
-      400,
-      "invalid_request",
-      "The path is invalid.",
-    );
-  }
+  return validatePath(decoded);
 }
 
 /** Resolves a direct peer address unless ServerConfig explicitly trusts a proxy. */
@@ -182,7 +190,9 @@ export function clientIp(
   }
   const forwarded = request.headers.get("x-forwarded-for");
   const first = forwarded?.split(",", 1)[0]?.trim();
-  return first && !/[\r\n\0]/.test(first) ? first : directAddress;
+  return first && !/[\r\n\0%]/.test(first) && isIP(first) !== 0
+    ? first
+    : directAddress;
 }
 
 /** Maps only known failures into a browser-safe error envelope. */
@@ -223,10 +233,9 @@ export function gatewayErrorResponse(
     if (error.status >= 400 && error.status < 500) {
       status = error.status;
       code = publicCode(error.code);
-      message = publicMessage(
-        error.message,
-        "The filesystem service rejected the request.",
-      );
+      message =
+        UPSTREAM_PUBLIC_MESSAGES[code] ??
+        "The filesystem service rejected the request.";
     }
   } else if (
     error instanceof UpstreamRequestError ||
@@ -260,14 +269,13 @@ export function gatewayErrorResponse(
 }
 
 export function methodNotAllowed(allow: string): Response {
-  return json(
-    {
-      error: {
-        code: "method_not_allowed",
-        message: "The request method is not allowed.",
-        status: 405,
-      },
-    } satisfies PublicError,
-    { status: 405, headers: { allow } },
+  const response = gatewayErrorResponse(
+    new PublicRequestError(
+      405,
+      "method_not_allowed",
+      "The request method is not allowed.",
+    ),
   );
+  response.headers.set("allow", allow);
+  return response;
 }
