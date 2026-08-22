@@ -11,6 +11,7 @@ export interface EditorState {
   original: string;
   revision: number | undefined;
   dirty: boolean;
+  binary?: boolean;
 }
 
 export interface RevisionConflict {
@@ -38,7 +39,19 @@ export type ShowcaseAction =
   | { type: "status_loaded"; status: BrowserStatus }
   | { type: "tree_loaded"; entries: readonly TreeEntry[]; background: boolean }
   | { type: "selected"; entry: TreeEntry }
-  | { type: "editor_loaded"; path: VirtualPath; text: string; revision: number }
+  | {
+      type: "editor_loaded";
+      path: VirtualPath;
+      text: string;
+      revision: number;
+      force?: boolean;
+    }
+  | {
+      type: "editor_binary";
+      path: VirtualPath;
+      revision: number;
+      force?: boolean;
+    }
   | { type: "editor_saved"; path: VirtualPath; text: string; revision: number }
   | { type: "editor_changed"; text: string }
   | { type: "busy_changed"; busyAction: string | undefined }
@@ -96,10 +109,14 @@ export function showcaseReducer(
         revisionConflict: undefined,
       };
     case "editor_loaded":
-      if (state.editor.dirty && state.editor.path !== action.path) {
+      if (
+        !action.force &&
+        state.editor.dirty &&
+        state.editor.path !== action.path
+      ) {
         return state;
       }
-      if (state.editor.dirty) {
+      if (!action.force && state.editor.dirty) {
         return {
           ...state,
           editor: {
@@ -118,6 +135,26 @@ export function showcaseReducer(
           original: action.text,
           revision: action.revision,
           dirty: false,
+        },
+        revisionConflict: undefined,
+      };
+    case "editor_binary":
+      if (
+        !action.force &&
+        state.editor.dirty &&
+        state.editor.path !== action.path
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        editor: {
+          path: action.path,
+          text: "",
+          original: "",
+          revision: action.revision,
+          dirty: false,
+          binary: true,
         },
         revisionConflict: undefined,
       };

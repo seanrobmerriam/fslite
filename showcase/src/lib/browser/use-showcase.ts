@@ -56,9 +56,13 @@ function decodeText(data: unknown): string {
     );
   }
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(
       new Uint8Array(bytes),
     );
+    if (text.includes("\0")) {
+      throw new TypeError("NUL bytes are not editable text");
+    }
+    return text;
   } catch {
     throw new ShowcaseError(
       "invalid_response",
@@ -92,47 +96,52 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
     }
   }, []);
 
-  const refresh = useCallback(async (background = false): Promise<void> => {
-    refreshRef.current?.abort();
-    const controller = new AbortController();
-    refreshRef.current = controller;
-    const epoch = ++refreshEpochRef.current;
-    const current = () =>
-      mountedRef.current &&
-      !controller.signal.aborted &&
-      epoch === refreshEpochRef.current;
+  const refresh = useCallback(
+    async (background = false): Promise<readonly TreeEntry[]> => {
+      refreshRef.current?.abort();
+      const controller = new AbortController();
+      refreshRef.current = controller;
+      const epoch = ++refreshEpochRef.current;
+      const current = () =>
+        mountedRef.current &&
+        !controller.signal.aborted &&
+        epoch === refreshEpochRef.current;
 
-    try {
-      const status = await apiRef.current.status(controller.signal);
-      if (!current()) return;
-      dispatch({ type: "status_loaded", status });
-      const tree = await apiRef.current.operation<{ items: TreeEntry[] }>(
-        { kind: "tree", path: "/" as VirtualPath },
-        controller.signal,
-      );
-      if (!current()) return;
-      dispatch({
-        type: "tree_loaded",
-        entries: tree.data.items ?? [],
-        background,
-      });
-      if (!background) {
-        dispatch({ type: "activity_appended", activity: tree.activity });
+      try {
+        const status = await apiRef.current.status(controller.signal);
+        if (!current()) return [];
+        dispatch({ type: "status_loaded", status });
+        const tree = await apiRef.current.operation<{ items: TreeEntry[] }>(
+          { kind: "tree", path: "/" as VirtualPath },
+          controller.signal,
+        );
+        if (!current()) return [];
+        dispatch({
+          type: "tree_loaded",
+          entries: tree.data.items ?? [],
+          background,
+        });
+        if (!background) {
+          dispatch({ type: "activity_appended", activity: tree.activity });
+        }
+        dispatch({ type: "error_set", error: undefined });
+        return tree.data.items ?? [];
+      } catch (error) {
+        if (
+          current() &&
+          !(error instanceof DOMException && error.name === "AbortError")
+        ) {
+          dispatch({ type: "error_set", error: error as Error });
+        }
+        return [];
+      } finally {
+        if (refreshRef.current === controller) {
+          refreshRef.current = undefined;
+        }
       }
-      dispatch({ type: "error_set", error: undefined });
-    } catch (error) {
-      if (
-        current() &&
-        !(error instanceof DOMException && error.name === "AbortError")
-      ) {
-        dispatch({ type: "error_set", error: error as Error });
-      }
-    } finally {
-      if (refreshRef.current === controller) {
-        refreshRef.current = undefined;
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -160,6 +169,13 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
       mutation: (signal: AbortSignal) => Promise<GatewayResult<T>>,
       conflictPath?: VirtualPath,
     ): Promise<GatewayResult<T>> => {
+      if (stateRef.current.status?.resetting) {
+        throw new ShowcaseError(
+          "workspace_resetting",
+          "The workspace is resetting. Please wait before making changes.",
+          503,
+        );
+      }
       if (mutationRef.current) {
         throw new ShowcaseError(
           "operation_in_progress",
@@ -215,8 +231,8 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
     [runMutation],
   );
 
-  const selectEntry = useCallback(
-    async (entry: TreeEntry): Promise<void> => {
+  const loadEntry = useCallback(
+    async (entry: TreeEntry, force = false): Promise<void> => {
       readEpochRef.current += 1;
       readRef.current?.abort();
       const controller = new AbortController();
@@ -240,13 +256,33 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
           controller.signal,
         );
         if (!current()) return;
-        const text = decodeText(result.data);
+        let text: string;
+        try {
+          text = decodeText(result.data);
+        } catch (error) {
+          if (
+            current() &&
+            error instanceof ShowcaseError &&
+            error.status === 422
+          ) {
+            dispatch({
+              type: "editor_binary",
+              path: entry.path,
+              revision: entry.node.revision,
+              force,
+            });
+            dispatch({ type: "activity_appended", activity: result.activity });
+            return;
+          }
+          throw error;
+        }
         if (!current()) return;
         dispatch({
           type: "editor_loaded",
           path: entry.path,
           text,
           revision: entry.node.revision,
+          force,
         });
         dispatch({ type: "activity_appended", activity: result.activity });
       } catch (error) {
@@ -263,6 +299,11 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
       }
     },
     [dispatchIfMounted],
+  );
+
+  const selectEntry = useCallback(
+    (entry: TreeEntry): Promise<void> => loadEntry(entry),
+    [loadEntry],
   );
 
   const setEditorText = useCallback(
@@ -331,11 +372,18 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
         dispatchIfMounted({ type: "dialog_changed", name, open }),
       clearRevisionConflict: () =>
         dispatchIfMounted({ type: "revision_conflict_cleared" }),
+      reloadServerVersion: async () => {
+        const path = stateRef.current.revisionConflict?.path;
+        const entries = await refresh(false);
+        const entry = entries.find((candidate) => candidate.path === path);
+        if (entry) await loadEntry(entry, true);
+      },
     }),
     [
       dispatchIfMounted,
       download,
       refresh,
+      loadEntry,
       runOperation,
       runMutation,
       save,

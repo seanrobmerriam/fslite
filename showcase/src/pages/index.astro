@@ -1,5 +1,6 @@
 ---
 import Layout from "../layouts/Layout.astro";
+import { ShowcaseExplorer } from "../components/explorer/ShowcaseExplorer";
 ---
 
 <Layout>
@@ -14,7 +15,7 @@ import Layout from "../layouts/Layout.astro";
     </section>
 
     <section aria-label="Filesystem showcase">
-      <p>The interactive filesystem explorer will appear here.</p>
+      <ShowcaseExplorer client:load />
     </section>
   </main>
 </Layout>
