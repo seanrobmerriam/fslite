@@ -1,13 +1,30 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { BrowserStatus } from "../../lib/browser/api";
 import type { WorkspaceUsage } from "../../lib/shared/contracts";
 
 interface WorkspaceStatusProps {
   status: BrowserStatus | undefined;
+  clock?: MonotonicClock;
+}
+
+export interface MonotonicClock {
+  monotonicNow(): number;
+  setInterval: typeof globalThis.setInterval;
+  clearInterval: typeof globalThis.clearInterval;
 }
 
 const MEBIBYTE = 1_048_576;
+const defaultClock: MonotonicClock = {
+  monotonicNow: () => {
+    const performance = globalThis.performance;
+    return typeof performance?.now === "function"
+      ? performance.now()
+      : Date.now();
+  },
+  setInterval: globalThis.setInterval,
+  clearInterval: globalThis.clearInterval,
+};
 
 function usageOf(value: unknown): Partial<WorkspaceUsage> {
   return value && typeof value === "object"
@@ -27,18 +44,30 @@ function formatCountdown(remainingMs: number): string {
 }
 
 /** Countdown anchors to server time, then advances by locally measured elapsed time. */
-export function WorkspaceStatus({ status }: WorkspaceStatusProps) {
-  const [receivedAt, setReceivedAt] = useState(() => Date.now());
-  const [now, setNow] = useState(() => Date.now());
+export function WorkspaceStatus({
+  status,
+  clock = defaultClock,
+}: WorkspaceStatusProps) {
+  const [elapsed, setElapsed] = useState(0);
+  const anchorRef = useRef<number | undefined>(undefined);
+  const scheduleKey = status
+    ? `${status.generation}:${status.now}:${status.nextResetAt}:${status.resetting}`
+    : "unavailable";
+  const anchoredScheduleRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    const received = Date.now();
-    setReceivedAt(received);
-    setNow(received);
-  }, [status?.generation, status?.now, status?.nextResetAt, status?.resetting]);
+    anchorRef.current = clock.monotonicNow();
+    anchoredScheduleRef.current = scheduleKey;
+    setElapsed(0);
+  }, [clock, scheduleKey]);
   useEffect(() => {
-    const timer = globalThis.setInterval(() => setNow(Date.now()), 1_000);
-    return () => globalThis.clearInterval(timer);
-  }, []);
+    const timer = clock.setInterval(() => {
+      const current = clock.monotonicNow();
+      const anchor = anchorRef.current ?? current;
+      anchorRef.current = anchor;
+      setElapsed(Math.max(0, current - anchor));
+    }, 1_000);
+    return () => clock.clearInterval(timer);
+  }, [clock]);
 
   if (!status) {
     return (
@@ -49,7 +78,9 @@ export function WorkspaceStatus({ status }: WorkspaceStatusProps) {
   }
 
   const usage = usageOf(status.usage);
-  const serverNow = status.now + Math.max(0, now - receivedAt);
+  const effectiveElapsed =
+    anchoredScheduleRef.current === scheduleKey ? elapsed : 0;
+  const serverNow = status.now + effectiveElapsed;
   const remaining =
     status.nextResetAt === null ? undefined : status.nextResetAt - serverNow;
   const resetLabel = status.resetting

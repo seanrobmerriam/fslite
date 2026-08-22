@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 
 import type { GatewayResult, Node, TreeEntry } from "../shared/contracts";
 import type { VirtualPath } from "../shared/path";
@@ -76,10 +83,11 @@ function decodeText(data: unknown): string {
  * The stateful React-island boundary. Browser work starts only in effects or
  * user events, so importing and server-rendering this module remain safe.
  */
-export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
+export function useShowcase(api?: ShowcaseApiLike) {
+  const [defaultApi] = useState<ShowcaseApiLike>(() => new ShowcaseApi());
   const [state, dispatch] = useReducer(showcaseReducer, initialShowcaseState);
   const stateRef = useRef(state);
-  const apiRef = useRef(api);
+  const apiRef = useRef<ShowcaseApiLike>(api ?? defaultApi);
   const mountedRef = useRef(false);
   const refreshRef = useRef<AbortController | undefined>(undefined);
   const refreshEpochRef = useRef(0);
@@ -88,7 +96,7 @@ export function useShowcase(api: ShowcaseApiLike = new ShowcaseApi()) {
   const mutationRef = useRef(false);
   const mutationControllerRef = useRef<AbortController | undefined>(undefined);
   stateRef.current = state;
-  apiRef.current = api;
+  apiRef.current = api ?? defaultApi;
 
   const dispatchIfMounted = useCallback((action: ShowcaseAction) => {
     if (mountedRef.current) {

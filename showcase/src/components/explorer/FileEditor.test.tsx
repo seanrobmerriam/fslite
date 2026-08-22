@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -45,8 +45,12 @@ describe("FileEditor", () => {
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     await user.keyboard("{Control>}s{/Control}");
     expect(onSave).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole("button", { name: "Save file" }));
+    expect(
+      fireEvent.keyDown(editor, { key: "s", metaKey: true, cancelable: true }),
+    ).toBe(false);
     expect(onSave).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole("button", { name: "Save file" }));
+    expect(onSave).toHaveBeenCalledTimes(3);
   });
 
   it("offers download without decoding binary content", async () => {
@@ -72,5 +76,42 @@ describe("FileEditor", () => {
       .setup()
       .click(screen.getByRole("button", { name: "Download file" }));
     expect(onDownload).toHaveBeenCalledWith("/image.bin");
+  });
+
+  it("does not intercept Ctrl/Cmd+S when saving is not valid", () => {
+    const { rerender } = render(
+      <FileEditor
+        node={textNode}
+        path={"/readme.txt" as VirtualPath}
+        text="hello"
+        dirty={false}
+        busy={false}
+        resetting={false}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDownload={vi.fn()}
+      />,
+    );
+    const editor = screen.getByRole("textbox", { name: "File contents" });
+    expect(
+      fireEvent.keyDown(editor, { key: "s", ctrlKey: true, cancelable: true }),
+    ).toBe(true);
+
+    rerender(
+      <FileEditor
+        node={textNode}
+        path={"/readme.txt" as VirtualPath}
+        text="hello"
+        dirty
+        busy={false}
+        resetting
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDownload={vi.fn()}
+      />,
+    );
+    expect(
+      fireEvent.keyDown(editor, { key: "s", metaKey: true, cancelable: true }),
+    ).toBe(true);
   });
 });

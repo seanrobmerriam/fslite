@@ -139,12 +139,16 @@ export function showcaseReducer(
         revisionConflict: undefined,
       };
     case "editor_binary":
-      if (
-        !action.force &&
-        state.editor.dirty &&
-        state.editor.path !== action.path
-      ) {
-        return state;
+      if (!action.force && state.editor.dirty) {
+        if (state.editor.path !== action.path) return state;
+        return {
+          ...state,
+          revisionConflict: {
+            path: action.path,
+            message:
+              "The server version is binary. Your unsaved text remains available until you explicitly reload it.",
+          },
+        };
       }
       return {
         ...state,

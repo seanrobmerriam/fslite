@@ -5,10 +5,17 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkspaceStatus } from "./WorkspaceStatus";
 
 describe("WorkspaceStatus", () => {
-  it("uses server time plus local elapsed time for reset countdown and exact public limits", () => {
+  it("uses monotonic elapsed time rather than wall-clock jumps for the reset countdown", () => {
     vi.useFakeTimers({ now: 2_000 });
+    let monotonicNow = 10_000;
+    const clock = {
+      monotonicNow: () => monotonicNow,
+      setInterval: globalThis.setInterval,
+      clearInterval: globalThis.clearInterval,
+    };
     render(
       <WorkspaceStatus
+        clock={clock}
         status={{
           ready: true,
           generation: 1,
@@ -33,8 +40,99 @@ describe("WorkspaceStatus", () => {
     expect(screen.getByText("1 MiB / 10 MiB")).toBeInTheDocument();
     expect(screen.getByText("25 / 250 nodes")).toBeInTheDocument();
     expect(screen.getByText("Reset in 1:00")).toBeInTheDocument();
+    vi.setSystemTime(900_000);
+    monotonicNow += 15_000;
     act(() => vi.advanceTimersByTime(15_000));
     expect(screen.getByText("Reset in 0:45")).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("renders null, skewed, and resetting schedules without going negative", () => {
+    const { rerender } = render(
+      <WorkspaceStatus
+        status={{
+          ready: true,
+          generation: 1,
+          resetting: false,
+          now: 2_000,
+          nextResetAt: null,
+          usage: {},
+        }}
+      />,
+    );
+    expect(screen.getByText("Reset schedule unavailable")).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceStatus
+        status={{
+          ready: true,
+          generation: 2,
+          resetting: false,
+          now: 2_000,
+          nextResetAt: 1_000,
+          usage: {},
+        }}
+      />,
+    );
+    expect(screen.getByText("Reset in 0:00")).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceStatus
+        status={{
+          ready: true,
+          generation: 2,
+          resetting: true,
+          now: 2_000,
+          nextResetAt: null,
+          usage: {},
+        }}
+      />,
+    );
+    expect(screen.getByText("Resetting workspace")).toBeInTheDocument();
+  });
+
+  it("reanchors a refreshed server schedule before applying further monotonic elapsed time", () => {
+    vi.useFakeTimers();
+    let monotonicNow = 1_000;
+    const clock = {
+      monotonicNow: () => monotonicNow,
+      setInterval: globalThis.setInterval,
+      clearInterval: globalThis.clearInterval,
+    };
+    const { rerender } = render(
+      <WorkspaceStatus
+        clock={clock}
+        status={{
+          ready: true,
+          generation: 1,
+          resetting: false,
+          now: 1_000,
+          nextResetAt: 61_000,
+          usage: {},
+        }}
+      />,
+    );
+    monotonicNow += 10_000;
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(screen.getByText("Reset in 0:50")).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceStatus
+        clock={clock}
+        status={{
+          ready: true,
+          generation: 2,
+          resetting: false,
+          now: 20_000,
+          nextResetAt: 80_000,
+          usage: {},
+        }}
+      />,
+    );
+    expect(screen.getByText("Reset in 1:00")).toBeInTheDocument();
+    monotonicNow += 10_000;
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(screen.getByText("Reset in 0:50")).toBeInTheDocument();
     vi.useRealTimers();
   });
 });

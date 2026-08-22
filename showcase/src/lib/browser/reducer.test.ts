@@ -191,4 +191,22 @@ describe("showcaseReducer", () => {
       message: "changed",
     });
   });
+
+  it("keeps a dirty same-path draft intact when a delayed read proves the server version is binary", () => {
+    const state = reduce(
+      { type: "selected", entry },
+      { type: "editor_loaded", path: entry.path, text: "server", revision: 3 },
+      { type: "editor_changed", text: "local unsaved" },
+      { type: "editor_binary", path: entry.path, revision: 4 },
+    );
+
+    expect(state.editor).toEqual({
+      path: entry.path,
+      text: "local unsaved",
+      original: "server",
+      revision: 3,
+      dirty: true,
+    });
+    expect(state.revisionConflict).toMatchObject({ path: entry.path });
+  });
 });

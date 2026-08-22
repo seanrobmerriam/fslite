@@ -329,6 +329,133 @@ describe("useShowcase", () => {
     });
   });
 
+  it("keeps a dirty same-path draft when a delayed read contains invalid UTF-8 or NUL bytes", async () => {
+    const api = apiMock();
+    const delayed = deferred<{ data: unknown; activity: typeof activity }>();
+    let reads = 0;
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation) => {
+        if (operation.kind === "tree")
+          return Promise.resolve({ data: tree, activity });
+        if (operation.kind === "read_file") {
+          reads += 1;
+          return reads === 1
+            ? Promise.resolve({ data: bytes("server"), activity })
+            : delayed.promise;
+        }
+        throw new Error(`unexpected ${operation.kind}`);
+      },
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    await act(async () => {
+      await result.current.selectEntry(fileEntry);
+    });
+
+    let reread!: Promise<void>;
+    act(() => {
+      reread = result.current.selectEntry(fileEntry);
+      result.current.setEditorText("local draft");
+    });
+    await act(async () => {
+      delayed.resolve({ data: [0xc3, 0x28], activity });
+      await reread;
+    });
+
+    expect(result.current.state.editor).toMatchObject({
+      path: fileEntry.path,
+      text: "local draft",
+      original: "server",
+      revision: 3,
+      dirty: true,
+    });
+    expect(result.current.state.editor).not.toHaveProperty("binary");
+    expect(result.current.state.revisionConflict).toMatchObject({
+      path: fileEntry.path,
+    });
+  });
+
+  it("marks clean invalid UTF-8 and NUL-containing files as binary without decoding them", async () => {
+    const api = apiMock();
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation) => {
+        if (operation.kind === "tree")
+          return Promise.resolve({ data: tree, activity });
+        if (operation.kind === "read_file")
+          return Promise.resolve({ data: [0, 65], activity });
+        throw new Error(`unexpected ${operation.kind}`);
+      },
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+
+    await act(async () => {
+      await result.current.selectEntry(fileEntry);
+    });
+
+    expect(result.current.state.editor).toMatchObject({
+      path: fileEntry.path,
+      text: "",
+      original: "",
+      binary: true,
+      dirty: false,
+    });
+  });
+
+  it("reloads a revision conflict only after refreshing the current server revision", async () => {
+    const api = apiMock();
+    const refreshedEntry = {
+      ...fileEntry,
+      node: { ...fileEntry.node, revision: 4 },
+    };
+    let treeReads = 0;
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation) => {
+        if (operation.kind === "tree") {
+          treeReads += 1;
+          return Promise.resolve({
+            data: { items: treeReads === 1 ? [fileEntry] : [refreshedEntry] },
+            activity,
+          });
+        }
+        if (operation.kind === "read_file")
+          return Promise.resolve({ data: bytes("server two"), activity });
+        if (operation.kind === "write_file") {
+          return Promise.reject(
+            Object.assign(new Error("Another visitor changed this file."), {
+              code: "revision_conflict",
+            }),
+          );
+        }
+        throw new Error(`unexpected ${operation.kind}`);
+      },
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    await act(async () => {
+      await result.current.selectEntry(fileEntry);
+    });
+    act(() => result.current.setEditorText("local draft"));
+    await act(async () => {
+      await expect(result.current.save()).rejects.toMatchObject({
+        code: "revision_conflict",
+      });
+    });
+    expect(result.current.state.editor.dirty).toBe(true);
+
+    await act(async () => {
+      await result.current.reloadServerVersion();
+    });
+
+    expect(result.current.state.editor).toMatchObject({
+      text: "server two",
+      original: "server two",
+      revision: 4,
+      dirty: false,
+    });
+    expect(result.current.state.revisionConflict).toBeUndefined();
+  });
+
   it("aborts an in-flight file read on unmount and ignores its late result", async () => {
     const api = apiMock();
     const pendingRead = deferred<{

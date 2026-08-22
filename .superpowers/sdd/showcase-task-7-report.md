@@ -58,3 +58,29 @@ island: `<ShowcaseExplorer client:load />`.
 - `showcase/` has no Playwright configuration or real-server fixture yet, so
   the browser end-to-end smoke belongs to the planned Task 11. The focused RTL
   keyboard coverage is the practical browser-level verification for this task.
+
+## Review follow-up: draft safety and monotonic time
+
+- Added RED/GREEN regressions for a delayed same-path invalid-UTF-8 response:
+  dirty text, original baseline, and revision now remain intact and the UI
+  exposes an explicit server-binary conflict. Clean invalid UTF-8 or NUL byte
+  payloads still become download-only binary metadata without textarea
+  corruption.
+- Reset countdown now anchors server time to `performance.now()` after mount,
+  with a `Date.now()` fallback only where monotonic time is unavailable. Its
+  initial server-rendered value is deterministic, refreshed status snapshots
+  re-anchor immediately, and wall-clock jumps cannot change elapsed progress.
+- `useShowcase` now creates its default `ShowcaseApi` lazily and once per hook
+  lifecycle rather than allocating it in a default parameter on every render.
+- Added keyboard coverage for all required tree keys; Ctrl/Cmd+S validity and
+  default prevention; both conflict actions; null/skew/reset countdown states;
+  and reload after tree revision refresh.
+
+Follow-up verification under Node 26.7.0 / Corepack pnpm 10.12.4:
+
+```text
+corepack pnpm --dir showcase test -- src/lib/browser src/components/explorer
+# 21 files, 220 tests passed
+corepack pnpm --dir showcase check
+# Astro, ESLint, and Prettier clean
+```

@@ -85,6 +85,18 @@ describe("FileTree", () => {
     expect(docs).toHaveAttribute("aria-expanded", "true");
     await user.keyboard("{ArrowRight}");
     expect(screen.getByRole("treeitem", { name: /readme.txt/i })).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    expect(docs).toHaveFocus();
+    await user.keyboard("{ArrowLeft}");
+    expect(docs).toHaveAttribute("aria-expanded", "false");
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("treeitem", { name: /todo.txt/i })).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(docs).toHaveFocus();
+    await user.keyboard("{ArrowRight}{ArrowDown}");
+    expect(screen.getByRole("treeitem", { name: /readme.txt/i })).toHaveFocus();
+    await user.keyboard(" ");
+    expect(onSelect).toHaveBeenLastCalledWith(entries[1]);
     await user.keyboard("{End}");
     expect(screen.getByRole("treeitem", { name: /todo.txt/i })).toHaveFocus();
     await user.keyboard("{Home}");
