@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { RollingWindowRateLimiter } from "./rate-limit";
 
-function limiterAt(startedAt = 1_000_000) {
+function limiterAt(startedAt = 1_000_000, options: { maxKeys?: number } = {}) {
   let now = startedAt;
   return {
-    limiter: new RollingWindowRateLimiter({ now: () => now }),
+    limiter: new RollingWindowRateLimiter({ now: () => now, ...options }),
     advance(milliseconds: number) {
       now += milliseconds;
     },
@@ -83,5 +83,30 @@ describe("RollingWindowRateLimiter", () => {
       limiter.checkAll("203.0.113.1", ["mutation", "upload"]),
     ).toMatchObject({ allowed: false, bucket: "upload" });
     expect(limiter.check("203.0.113.1", "mutation").allowed).toBe(true);
+  });
+
+  it("globally prunes stale client keys before admitting a different client", () => {
+    const { limiter, advance } = limiterAt(1_000_000, { maxKeys: 1 });
+
+    expect(limiter.check("203.0.113.1", "read").allowed).toBe(true);
+    expect(limiter.activeKeyCount()).toBe(1);
+    advance(60_000);
+
+    expect(limiter.check("203.0.113.2", "read").allowed).toBe(true);
+    expect(limiter.activeKeyCount()).toBe(1);
+  });
+
+  it("fails closed at the active-key capacity without evicting existing clients", () => {
+    const { limiter } = limiterAt(1_000_000, { maxKeys: 2 });
+
+    expect(limiter.check("203.0.113.1", "read").allowed).toBe(true);
+    expect(limiter.check("203.0.113.2", "read").allowed).toBe(true);
+    expect(limiter.check("203.0.113.3", "read")).toMatchObject({
+      allowed: false,
+      bucket: "read",
+      retryAfterMs: 60_000,
+    });
+    expect(limiter.check("203.0.113.1", "read").allowed).toBe(true);
+    expect(limiter.activeKeyCount()).toBe(2);
   });
 });

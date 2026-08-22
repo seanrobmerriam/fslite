@@ -16,6 +16,11 @@ const activity: ActivityRecord = {
   response: null,
   curl: "curl",
 };
+const trashId = "019fbe44-865f-7222-bcfb-78895800892b";
+const internalListActivity: ActivityRecord = {
+  ...activity,
+  id: "activity-list",
+};
 
 function upstream(data: unknown = { result: true }) {
   return { data, activity };
@@ -31,7 +36,10 @@ function client() {
     move: vi.fn().mockResolvedValue(upstream({ id: "move" })),
     trash: vi.fn().mockResolvedValue(upstream({ id: "trash" })),
     remove: vi.fn().mockResolvedValue(upstream(undefined)),
-    listTrash: vi.fn().mockResolvedValue(upstream({ items: [] })),
+    listTrash: vi.fn().mockResolvedValue({
+      data: { items: [{ id: trashId, node: { name: "readme.txt" } }] },
+      activity: internalListActivity,
+    }),
     restore: vi.fn().mockResolvedValue(upstream({ id: "restore" })),
     purge: vi.fn().mockResolvedValue(upstream(undefined)),
     glob: vi.fn().mockResolvedValue(upstream({ items: [] })),
@@ -63,14 +71,8 @@ describe("ShowcaseGateway", () => {
         "remove",
       ],
       [{ kind: "list_trash" }, "listTrash"],
-      [
-        { kind: "restore", trashId: "trash-1", destination: "/restored.txt" },
-        "restore",
-      ],
-      [
-        { kind: "purge", trashId: "trash-1", confirmedName: "readme.txt" },
-        "purge",
-      ],
+      [{ kind: "restore", trashId, destination: "/restored.txt" }, "restore"],
+      [{ kind: "purge", trashId, confirmedName: "readme.txt" }, "purge"],
       [{ kind: "glob", pattern: "/**/*.txt" }, "glob"],
       [{ kind: "find", root: "/", nameContains: "readme" }, "find"],
       [{ kind: "search_content", root: "/", text: "needle" }, "searchContent"],
@@ -80,7 +82,8 @@ describe("ShowcaseGateway", () => {
 
     for (const [operation, method] of cases) {
       const result = await gateway.execute(operation, "203.0.113.1");
-      expect(result).toEqual({ data: expect.anything(), activity });
+      expect(result).toMatchObject({ data: expect.anything() });
+      expect(Object.keys(result)).toEqual(["data", "activity"]);
       expect(api[method]).toHaveBeenCalledTimes(1);
     }
   });
@@ -123,6 +126,64 @@ describe("ShowcaseGateway", () => {
 
     expect(Object.keys(result)).toEqual(["data", "activity"]);
     expect(result.activity).toBe(activity);
+  });
+
+  it("confirms the current trash entry name before purging without returning lookup activity", async () => {
+    const api = client();
+    const gateway = new ShowcaseGateway(api);
+
+    const result = await gateway.execute(
+      { kind: "purge", trashId, confirmedName: "readme.txt" },
+      "203.0.113.1",
+    );
+
+    expect(api.listTrash).toHaveBeenCalledTimes(1);
+    expect(api.purge).toHaveBeenCalledWith(trashId);
+    expect(result).toEqual({ data: expect.anything(), activity });
+    expect(result.activity).not.toBe(internalListActivity);
+  });
+
+  it("rejects a mismatched purge confirmation without calling purge", async () => {
+    const api = client();
+    const gateway = new ShowcaseGateway(api);
+
+    await expect(
+      gateway.execute(
+        { kind: "purge", trashId, confirmedName: "other.txt" },
+        "203.0.113.1",
+      ),
+    ).rejects.toThrow("Purge confirmation did not match");
+    expect(api.listTrash).toHaveBeenCalledTimes(1);
+    expect(api.purge).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing trash entry without calling purge", async () => {
+    const api = client();
+    api.listTrash.mockResolvedValueOnce({
+      data: { items: [] },
+      activity: internalListActivity,
+    });
+    const gateway = new ShowcaseGateway(api);
+
+    await expect(
+      gateway.execute(
+        { kind: "purge", trashId, confirmedName: "readme.txt" },
+        "203.0.113.1",
+      ),
+    ).rejects.toThrow("Purge confirmation did not match");
+    expect(api.purge).not.toHaveBeenCalled();
+  });
+
+  it("forwards a validated absolute glob pattern unchanged", async () => {
+    const api = client();
+    const gateway = new ShowcaseGateway(api);
+
+    await gateway.execute(
+      { kind: "glob", pattern: "/docs/**/target?.txt" },
+      "203.0.113.1",
+    );
+
+    expect(api.glob).toHaveBeenCalledWith("/docs/**/target?.txt");
   });
 
   it("enforces the mutation window before upstream dispatch", async () => {

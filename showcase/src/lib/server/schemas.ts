@@ -31,11 +31,12 @@ const boundedTextSchema = z.string().superRefine((value, context) => {
   }
 });
 const boundedStringSchema = z.string().min(1).max(1024);
-const identifierSchema = z
+const trashIdSchema = z
   .string()
-  .min(1)
-  .max(255)
-  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, "identifier has unsafe characters");
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    "trash ID must be a canonical UUIDv7",
+  );
 const confirmedNameSchema = z
   .string()
   .min(1)
@@ -44,6 +45,48 @@ const confirmedNameSchema = z
     (value) => !value.includes("/") && !value.includes("\0"),
     "confirmation must be a file name",
   );
+const globPatternSchema = z
+  .string()
+  .min(1)
+  .max(1024)
+  .superRefine((value, context) => {
+    if (!value.startsWith("/")) {
+      context.addIssue({
+        code: "custom",
+        message: "glob pattern must be absolute",
+      });
+      return;
+    }
+    if (hasControlCharacter(value)) {
+      context.addIssue({
+        code: "custom",
+        message: "glob pattern may not contain control characters",
+      });
+      return;
+    }
+    if (value === "/") {
+      return;
+    }
+
+    const segments = value.split("/").slice(1);
+    if (
+      segments.some(
+        (segment) => segment === "" || segment === "." || segment === "..",
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "glob pattern must use canonical path segments",
+      });
+    }
+  });
+
+function hasControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.codePointAt(0);
+    return code !== undefined && (code < 0x20 || code === 0x7f);
+  });
+}
 
 const treeOperationSchema = z
   .object({ kind: z.literal("tree"), path: virtualPathSchema })
@@ -118,19 +161,19 @@ const listTrashOperationSchema = z
 const restoreOperationSchema = z
   .object({
     kind: z.literal("restore"),
-    trashId: identifierSchema,
+    trashId: trashIdSchema,
     destination: virtualPathSchema.optional(),
   })
   .strict();
 const purgeOperationSchema = z
   .object({
     kind: z.literal("purge"),
-    trashId: identifierSchema,
+    trashId: trashIdSchema,
     confirmedName: confirmedNameSchema,
   })
   .strict();
 const globOperationSchema = z
-  .object({ kind: z.literal("glob"), pattern: boundedStringSchema })
+  .object({ kind: z.literal("glob"), pattern: globPatternSchema })
   .strict();
 const findOperationSchema = z
   .object({

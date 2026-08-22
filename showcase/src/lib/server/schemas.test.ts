@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parsePublicOperation } from "./schemas";
 
 const path = "/docs/readme.txt";
+const trashId = "019fbe44-865f-7222-bcfb-78895800892b";
 
 const acceptedOperations = [
   { kind: "tree", path },
@@ -15,8 +16,8 @@ const acceptedOperations = [
   { kind: "remove", path, recursive: false, confirmedPath: path },
   { kind: "remove", path, recursive: true, confirmedPath: path },
   { kind: "list_trash" },
-  { kind: "restore", trashId: "trash-1", destination: "/restored.txt" },
-  { kind: "purge", trashId: "trash-1", confirmedName: "readme.txt" },
+  { kind: "restore", trashId, destination: "/restored.txt" },
+  { kind: "purge", trashId, confirmedName: "readme.txt" },
   { kind: "glob", pattern: "/**/*.txt" },
   { kind: "find", root: "/", nameContains: "readme" },
   { kind: "search_content", root: "/", text: "needle" },
@@ -85,5 +86,47 @@ describe("parsePublicOperation", () => {
         confirmedPath: "/",
       }),
     ).toThrow();
+  });
+
+  it.each([
+    "trash-1",
+    ".",
+    "..",
+    "%2Ftrash",
+    "/019fbe44-865f-7222-bcfb-78895800892b",
+    "019fbe44865f7222bcfb78895800892b",
+    "019FBE44-865F-7222-BCFB-78895800892B",
+    "550e8400-e29b-41d4-a716-446655440000",
+    "019fbe44-865f-6222-bcfb-78895800892b",
+    "019fbe44-865f-7222-7cfb-78895800892b",
+  ])("rejects noncanonical or non-v7 trash ID %s", (invalidTrashId) => {
+    expect(() =>
+      parsePublicOperation({
+        kind: "restore",
+        trashId: invalidTrashId,
+      }),
+    ).toThrow();
+  });
+
+  it.each(["/", "/*.txt", "/docs/**/target?.txt", "/literal-[brackets].txt"])(
+    "accepts safe absolute glob pattern %s",
+    (pattern) => {
+      expect(parsePublicOperation({ kind: "glob", pattern })).toMatchObject({
+        kind: "glob",
+        pattern,
+      });
+    },
+  );
+
+  it.each([
+    "docs/*.txt",
+    "/docs/../*.txt",
+    "/docs/./*.txt",
+    "/docs//*.txt",
+    "/docs/",
+    "/docs/\0*.txt",
+    "/docs/\u0001*.txt",
+  ])("rejects unsafe or noncanonical glob pattern %s", (pattern) => {
+    expect(() => parsePublicOperation({ kind: "glob", pattern })).toThrow();
   });
 });

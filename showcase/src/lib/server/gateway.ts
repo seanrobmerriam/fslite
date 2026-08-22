@@ -66,6 +66,14 @@ export class GatewayRateLimitError extends Error {
   }
 }
 
+export class GatewayPurgeConfirmationError extends Error {
+  readonly name = "GatewayPurgeConfirmationError";
+
+  constructor() {
+    super("Purge confirmation did not match the current trash entry");
+  }
+}
+
 function readBuckets(operation: PublicOperation): readonly RateLimitBucket[] {
   switch (operation.kind) {
     case "tree":
@@ -159,7 +167,7 @@ export class ShowcaseGateway {
           await this.client.restore(operation.trashId, operation.destination),
         );
       case "purge":
-        return toGatewayResult(await this.client.purge(operation.trashId));
+        return this.purge(operation.trashId, operation.confirmedName);
       case "glob":
         return toGatewayResult(await this.client.glob(operation.pattern));
       case "find":
@@ -203,8 +211,51 @@ export class ShowcaseGateway {
       throwRateLimit(result);
     }
   }
+
+  private async purge(
+    trashId: string,
+    confirmedName: string,
+  ): Promise<GatewayResult<unknown>> {
+    const listing = await this.client.listTrash();
+    const name = trashEntryName(listing.data, trashId);
+    if (name === undefined || name !== confirmedName) {
+      throw new GatewayPurgeConfirmationError();
+    }
+
+    // Trash IDs are immutable. If the entry disappears after this lookup, the
+    // fixed purge request fails upstream rather than targeting another entry.
+    return toGatewayResult(await this.client.purge(trashId));
+  }
 }
 
 function throwRateLimit(result: RateLimitResult): never {
   throw new GatewayRateLimitError(result.bucket ?? "read", result.retryAfterMs);
+}
+
+function trashEntryName(data: unknown, trashId: string): string | undefined {
+  if (!data || typeof data !== "object" || !("items" in data)) {
+    return undefined;
+  }
+  const { items } = data;
+  if (!Array.isArray(items)) {
+    return undefined;
+  }
+  for (const entry of items) {
+    if (
+      !entry ||
+      typeof entry !== "object" ||
+      !("id" in entry) ||
+      entry.id !== trashId
+    ) {
+      continue;
+    }
+    if (!("node" in entry) || !entry.node || typeof entry.node !== "object") {
+      return undefined;
+    }
+    if (!("name" in entry.node) || typeof entry.node.name !== "string") {
+      return undefined;
+    }
+    return entry.node.name;
+  }
+  return undefined;
 }
