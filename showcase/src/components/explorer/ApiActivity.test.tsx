@@ -79,6 +79,61 @@ describe("ApiActivity", () => {
     );
   });
 
+  it("recursively redacts mixed-case sensitive keys in nested arrays and objects", async () => {
+    const user = userEvent.setup();
+    render(
+      <ApiActivity
+        activities={[
+          {
+            ...entry,
+            request: {
+              nested: [
+                { Cookie: "cookie-value", visible: "keep-me" },
+                {
+                  deep: { SeCrEt: "secret-value", PASSword: "password-value" },
+                },
+              ],
+              Api_Key: "api-value",
+              PRIVATE_KEY: "private-value",
+            },
+            response: {
+              Authorization: "authorization-value",
+              token: "token-value",
+            },
+          },
+        ]}
+        onClear={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByText(/POST \/v1\/files\/readme.txt/));
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "PRE" &&
+          element.textContent?.includes("keep-me") === true,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /cookie-value|secret-value|password-value|api-value|private-value|authorization-value|token-value/i,
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("announces clipboard rejection without an unhandled UI rejection", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard blocked"));
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    render(<ApiActivity activities={[entry]} onClear={vi.fn()} />);
+    await user.click(screen.getByText(/POST \/v1\/files\/readme.txt/));
+    await expect(
+      user.click(screen.getByRole("button", { name: "Copy curl" })),
+    ).resolves.toBeUndefined();
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /could not copy sanitized curl/i,
+    );
+  });
+
   it("renders only the most recent 100 local activity entries", () => {
     const activities = Array.from({ length: 101 }, (_, index) => ({
       ...entry,

@@ -105,3 +105,33 @@ The fresh built-client scan found no `fslite-server`, `fslite-client`, real
 bearer credentials, `Cookie`, `X-Secret`, or lifecycle calls. It contains only
 `$FSLITE_TOKEN` and `$FSLITE_SERVER_URL` placeholders. The existing untracked
 `.DS_Store` files remain preserved and excluded.
+
+## Final activity-redaction follow-up (2026-08-22)
+
+- **RED:** Nested and mixed-case `Cookie`, `SeCrEt`, `PASSword`, `Api_Key`,
+  `PRIVATE_KEY`, `Authorization`, and `token` fields could survive the final
+  activity-panel key filter. Clipboard failure handling needed an explicit
+  real rejected `navigator.clipboard.writeText` regression.
+- **GREEN:** The final recursive activity renderer now treats cookie, secret,
+  password, API-key, and private-key variants as sensitive at any nested
+  object/array depth, case-insensitively, alongside authorization and token.
+  Sensitive values never render in JSON and cannot influence reconstructed
+  copied curl. A rejected clipboard promise is caught, announces “Could not
+  copy sanitized curl.” through the accessible status region, and does not
+  escape the UI handler.
+
+```text
+PATH=/Users/sean/.nvm/versions/node/v24.14.1/bin:$PATH corepack pnpm --dir showcase test
+# 30 files, 273 tests passed
+
+PATH=/Users/sean/.nvm/versions/node/v24.14.1/bin:$PATH corepack pnpm --dir showcase check
+# Astro diagnostics: 0 errors, 0 warnings, 0 hints; ESLint and Prettier clean
+
+PATH=/Users/sean/.nvm/versions/node/v24.14.1/bin:$PATH corepack pnpm --dir showcase build
+# Astro SSR build completed
+```
+
+Fresh built-client scans found no private server/client references, credentials,
+Cookie/secret headers, or lifecycle calls; only `$FSLITE_TOKEN` and
+`$FSLITE_SERVER_URL` placeholders remain. The existing untracked `.DS_Store`
+files are preserved and excluded.

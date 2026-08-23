@@ -9,7 +9,7 @@ export interface ApiActivityProps {
 }
 
 const privateKey =
-  /authorization|bearer|token|server|upstream|internal|headers?/i;
+  /authorization|bearer|token|api[-_]?key|private[-_]?key|cookie|secret|password|server|upstream|internal|headers?/i;
 const privateScalar =
   /(?:bearer|basic)\s+\S+|(?:authorization|cookie|token|secret)\s*[:=]|https?:\/\//i;
 function sanitize(value: JsonValue | null): JsonValue | null {
