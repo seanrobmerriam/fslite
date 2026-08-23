@@ -161,6 +161,28 @@ describe("useShowcase", () => {
     expect(api.operation).toHaveBeenCalledTimes(4);
   });
 
+  it("records a visitor read once without treating discovery as a tree refresh", async () => {
+    const api = apiMock();
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(api.operation).toHaveBeenCalledTimes(1));
+    (api.operation as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: { items: [], next_cursor: null },
+      activity: { ...activity, id: "find" },
+    });
+    await act(async () => {
+      await result.current.runReadOperation({
+        kind: "find",
+        root: "/" as never,
+        nameContains: "readme",
+      });
+    });
+    expect(api.operation).toHaveBeenCalledTimes(2);
+    expect(result.current.state.activities.map((item) => item.id)).toEqual([
+      "a",
+      "find",
+    ]);
+  });
+
   it("normalizes a download failure into application error state without activity or rejection", async () => {
     const api = apiMock();
     (api.download as ReturnType<typeof vi.fn>).mockRejectedValueOnce(

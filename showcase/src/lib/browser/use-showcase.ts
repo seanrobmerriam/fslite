@@ -95,6 +95,10 @@ export function useShowcase(api?: ShowcaseApiLike) {
   const readEpochRef = useRef(0);
   const mutationRef = useRef(false);
   const mutationControllerRef = useRef<AbortController | undefined>(undefined);
+  const visitorReadRef = useRef(false);
+  const visitorReadControllerRef = useRef<AbortController | undefined>(
+    undefined,
+  );
   stateRef.current = state;
   apiRef.current = api ?? defaultApi;
 
@@ -168,6 +172,8 @@ export function useShowcase(api?: ShowcaseApiLike) {
       readRef.current = undefined;
       mutationControllerRef.current?.abort();
       mutationControllerRef.current = undefined;
+      visitorReadControllerRef.current?.abort();
+      visitorReadControllerRef.current = undefined;
     };
   }, [refresh]);
 
@@ -237,6 +243,55 @@ export function useShowcase(api?: ShowcaseApiLike) {
         "path" in operation ? (operation.path as VirtualPath) : undefined,
       ),
     [runMutation],
+  );
+
+  const runReadOperation = useCallback(
+    async <T>(operation: PublicOperation): Promise<GatewayResult<T>> => {
+      if (stateRef.current.status?.resetting) {
+        throw new ShowcaseError(
+          "workspace_resetting",
+          "The workspace is resetting. Please wait before trying again.",
+          503,
+        );
+      }
+      if (mutationRef.current || visitorReadRef.current) {
+        throw new ShowcaseError(
+          "operation_in_progress",
+          "Another operation is still running.",
+          409,
+        );
+      }
+      visitorReadRef.current = true;
+      const controller = new AbortController();
+      visitorReadControllerRef.current = controller;
+      dispatchIfMounted({ type: "busy_changed", busyAction: operation.kind });
+      try {
+        const result = await apiRef.current.operation<T>(
+          operation,
+          controller.signal,
+        );
+        if (!controller.signal.aborted) {
+          dispatchIfMounted({
+            type: "activity_appended",
+            activity: result.activity,
+          });
+          dispatchIfMounted({ type: "error_set", error: undefined });
+        }
+        return result;
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          dispatchIfMounted({ type: "error_set", error: error as Error });
+        }
+        throw error;
+      } finally {
+        visitorReadRef.current = false;
+        if (visitorReadControllerRef.current === controller) {
+          visitorReadControllerRef.current = undefined;
+        }
+        dispatchIfMounted({ type: "busy_changed", busyAction: undefined });
+      }
+    },
+    [dispatchIfMounted],
   );
 
   const loadEntry = useCallback(
@@ -373,6 +428,7 @@ export function useShowcase(api?: ShowcaseApiLike) {
       state,
       refresh,
       runOperation,
+      runReadOperation,
       runMutation,
       selectEntry,
       setEditorText,
@@ -397,6 +453,7 @@ export function useShowcase(api?: ShowcaseApiLike) {
       refresh,
       loadEntry,
       runOperation,
+      runReadOperation,
       runMutation,
       save,
       selectEntry,

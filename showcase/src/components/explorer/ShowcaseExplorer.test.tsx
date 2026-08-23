@@ -9,6 +9,9 @@ import { ShowcaseExplorer } from "./ShowcaseExplorer";
 const showcaseMock = vi.hoisted(() => ({
   reloadServerVersion: vi.fn(),
   runOperation: vi.fn(),
+  runReadOperation: vi
+    .fn()
+    .mockResolvedValue({ data: { items: [], next_cursor: null } }),
   upload: vi.fn(),
   tree: [] as TreeEntry[],
   selectedPath: undefined as VirtualPath | undefined,
@@ -43,6 +46,7 @@ vi.mock("../../lib/browser/use-showcase", () => ({
       selectedNode: showcaseMock.selectedNode,
       editor: showcaseMock.editor,
       busyAction: undefined,
+      activities: [],
       error: undefined,
       revisionConflict: {
         path: "/readme.txt",
@@ -51,6 +55,7 @@ vi.mock("../../lib/browser/use-showcase", () => ({
     },
     refresh: vi.fn(),
     runOperation: showcaseMock.runOperation,
+    runReadOperation: showcaseMock.runReadOperation,
     selectEntry: vi.fn(),
     setEditorText: vi.fn(),
     save: vi.fn(),
@@ -58,6 +63,7 @@ vi.mock("../../lib/browser/use-showcase", () => ({
     upload: showcaseMock.upload,
     clearRevisionConflict: vi.fn(),
     reloadServerVersion: showcaseMock.reloadServerVersion,
+    clearActivities: vi.fn(),
   }),
 }));
 
@@ -90,6 +96,37 @@ describe("ShowcaseExplorer", () => {
     expect(reload).toBeEnabled();
     fireEvent.click(reload);
     expect(showcaseMock.reloadServerVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses labelled automatic tabs with keyboard selection while API activity stays below every work area", async () => {
+    const user = userEvent.setup();
+    showcaseMock.status.resetting = false;
+    render(<ShowcaseExplorer />);
+
+    const explorer = screen.getByRole("tab", { name: "Explorer" });
+    expect(explorer).toHaveAttribute("aria-controls", "explorer-panel");
+    expect(
+      screen.getByRole("tabpanel", { name: "Explorer" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "API activity" }),
+    ).toBeInTheDocument();
+    explorer.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "Search" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      screen.getByRole("tabpanel", { name: "Search" }),
+    ).toBeInTheDocument();
+    await user.keyboard("{End}");
+    expect(screen.getByRole("tab", { name: "Changes" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.keyboard("{Home}");
+    expect(explorer).toHaveAttribute("aria-selected", "true");
   });
 
   it("opens a labelled create dialog at the selected directory, isolates the background, and sends its exact mutation", async () => {

@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type KeyboardEvent } from "react";
 
 import type { PublicOperation } from "../../lib/server/schemas";
-import type { TreeEntry } from "../../lib/shared/contracts";
+import type { Change, TrashEntry, TreeEntry } from "../../lib/shared/contracts";
 import type { VirtualPath } from "../../lib/shared/path";
 import { useShowcase } from "../../lib/browser/use-showcase";
 import { ActionDialog } from "./ActionDialog";
@@ -14,6 +14,10 @@ import { ToastRegion } from "./ToastRegion";
 import { Toolbar } from "./Toolbar";
 import { UploadDialog } from "./UploadDialog";
 import { WorkspaceStatus } from "./WorkspaceStatus";
+import { SearchPanel } from "./SearchPanel";
+import { TrashPanel } from "./TrashPanel";
+import { ChangesPanel } from "./ChangesPanel";
+import { ApiActivity } from "./ApiActivity";
 
 function directoryFor(
   path: VirtualPath | undefined,
@@ -93,14 +97,19 @@ export function ShowcaseExplorer() {
     refresh,
     reloadServerVersion: reloadServerVersion,
     runOperation,
+    runReadOperation,
     save,
     selectEntry,
     setEditorText,
     upload,
+    clearActivities,
   } = useShowcase();
   const explorerRef = useRef<HTMLDivElement>(null);
   const [dialog, setDialog] = useState<DialogState>();
   const [draftGuard, setDraftGuard] = useState<DraftGuardState>();
+  const [activeTab, setActiveTab] = useState<
+    "explorer" | "search" | "trash" | "changes"
+  >("explorer");
   const resetting = state.status?.resetting ?? false;
   const busy = Boolean(state.busyAction);
   const mutationDisabled = resetting || busy;
@@ -213,6 +222,62 @@ export function ShowcaseExplorer() {
   }, [reloadServerVersion]);
 
   const modalOpen = Boolean(dialog || draftGuard);
+  const tabs = [
+    ["explorer", "Explorer"],
+    ["search", "Search"],
+    ["trash", "Trash"],
+    ["changes", "Changes"],
+  ] as const;
+  const selectSearchPath = useCallback(
+    (path: VirtualPath) => {
+      const entry = state.tree.find((candidate) => candidate.path === path);
+      if (entry) void selectEntry(entry);
+      setActiveTab("explorer");
+    },
+    [selectEntry, state.tree],
+  );
+  const search = useCallback(
+    async (operation: PublicOperation) =>
+      (await runReadOperation<{ items: unknown[] }>(operation)).data,
+    [runReadOperation],
+  );
+  const listTrash = useCallback(
+    async () =>
+      (
+        await runReadOperation<{ items: TrashEntry[] }>({
+          kind: "list_trash",
+        })
+      ).data,
+    [runReadOperation],
+  );
+  const loadChanges = useCallback(
+    async (after?: string) =>
+      (
+        await runReadOperation<{
+          items: Change[];
+          next_cursor: string | null;
+        }>({ kind: "changes", ...(after ? { after } : {}) })
+      ).data,
+    [runReadOperation],
+  );
+  const moveTab = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next: number;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown")
+      next = (index + 1) % tabs.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp")
+      next = (index + tabs.length - 1) % tabs.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tabs.length - 1;
+    else if (event.key === "Enter" || event.key === " ") {
+      setActiveTab(tabs[index][0]);
+      return;
+    } else return;
+    event.preventDefault();
+    const tab = tabs[next];
+    if (!tab) return;
+    setActiveTab(tab[0]);
+    document.getElementById(`${tab[0]}-tab`)?.focus();
+  };
 
   return (
     <>
@@ -228,63 +293,120 @@ export function ShowcaseExplorer() {
       >
         <WorkspaceStatus status={state.status} />
         <ToastRegion error={state.error} resetting={resetting} />
-        <Toolbar
-          disabled={mutationDisabled}
-          onRefresh={() => void refresh()}
-          onNewFile={() => openCreate("file")}
-          onNewFolder={() => openCreate("folder")}
-          onUpload={openUpload}
-        />
-        {state.revisionConflict ? (
-          <section
-            className="revision-conflict"
-            aria-label="Revision conflict"
-            role="alert"
-          >
-            <div>
-              <strong>This file changed on the shared workspace.</strong>
-              <p>{state.revisionConflict.message}</p>
-            </div>
-            <div className="editor-actions">
-              <button
-                type="button"
-                className="button button--quiet"
-                onClick={() => void copyUnsavedText()}
-              >
-                Copy my unsaved text
-              </button>
-              <button
-                type="button"
-                className="button button--accent"
-                disabled={busy || resetting}
-                onClick={reloadCurrentServerVersion}
-              >
-                Reload server version
-              </button>
-            </div>
-          </section>
-        ) : null}
-        <div className="explorer-workbench">
-          <FileTree
-            entries={state.tree}
-            selectedPath={state.selectedPath}
-            disabled={busy}
-            onSelect={(entry) => void selectEntry(entry)}
-            onAction={openNodeAction}
-          />
-          <FileEditor
-            node={editorNode}
-            path={editorNode ? state.editor.path : undefined}
-            text={state.editor.text}
-            dirty={state.editor.dirty}
-            binary={state.editor.binary}
-            busy={busy}
-            resetting={resetting}
-            onChange={setEditorText}
-            onSave={save}
-            onDownload={download}
-          />
+        <div
+          role="tablist"
+          aria-label="Explorer views"
+          className="explorer-tabs"
+        >
+          {tabs.map(([id, label], index) => (
+            <button
+              key={id}
+              id={`${id}-tab`}
+              role="tab"
+              type="button"
+              tabIndex={activeTab === id ? 0 : -1}
+              aria-selected={activeTab === id}
+              aria-controls={`${id}-panel`}
+              onClick={() => setActiveTab(id)}
+              onKeyDown={(event) => moveTab(event, index)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
+        {activeTab === "explorer" ? (
+          <div
+            role="tabpanel"
+            id="explorer-panel"
+            aria-labelledby="explorer-tab"
+          >
+            <Toolbar
+              disabled={mutationDisabled}
+              onRefresh={() => void refresh()}
+              onNewFile={() => openCreate("file")}
+              onNewFolder={() => openCreate("folder")}
+              onUpload={openUpload}
+            />
+            {state.revisionConflict ? (
+              <section
+                className="revision-conflict"
+                aria-label="Revision conflict"
+                role="alert"
+              >
+                <div>
+                  <strong>This file changed on the shared workspace.</strong>
+                  <p>{state.revisionConflict.message}</p>
+                </div>
+                <div className="editor-actions">
+                  <button
+                    type="button"
+                    className="button button--quiet"
+                    onClick={() => void copyUnsavedText()}
+                  >
+                    Copy my unsaved text
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--accent"
+                    disabled={busy || resetting}
+                    onClick={reloadCurrentServerVersion}
+                  >
+                    Reload server version
+                  </button>
+                </div>
+              </section>
+            ) : null}
+            <div className="explorer-workbench">
+              <FileTree
+                entries={state.tree}
+                selectedPath={state.selectedPath}
+                disabled={busy}
+                onSelect={(entry) => void selectEntry(entry)}
+                onAction={openNodeAction}
+              />
+              <FileEditor
+                node={editorNode}
+                path={editorNode ? state.editor.path : undefined}
+                text={state.editor.text}
+                dirty={state.editor.dirty}
+                binary={state.editor.binary}
+                busy={busy}
+                resetting={resetting}
+                onChange={setEditorText}
+                onSave={save}
+                onDownload={download}
+              />
+            </div>
+          </div>
+        ) : null}
+        {activeTab === "search" ? (
+          <div role="tabpanel" id="search-panel" aria-labelledby="search-tab">
+            <SearchPanel
+              busy={busy || resetting}
+              entries={state.tree}
+              onSearch={search}
+              onSelectPath={selectSearchPath}
+            />
+          </div>
+        ) : null}
+        {activeTab === "trash" ? (
+          <div role="tabpanel" id="trash-panel" aria-labelledby="trash-tab">
+            <TrashPanel
+              busy={busy || resetting}
+              onList={listTrash}
+              onOperation={runOperation}
+            />
+          </div>
+        ) : null}
+        {activeTab === "changes" ? (
+          <div role="tabpanel" id="changes-panel" aria-labelledby="changes-tab">
+            <ChangesPanel
+              generation={state.status?.generation}
+              onLoad={loadChanges}
+            />
+          </div>
+        ) : null}
+        <ApiActivity activities={state.activities} onClear={clearActivities} />
       </div>
       {dialog?.kind === "create" ? (
         <CreateDialog
