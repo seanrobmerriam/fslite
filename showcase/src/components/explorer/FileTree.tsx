@@ -18,7 +18,11 @@ interface FileTreeProps {
   selectedPath: VirtualPath | undefined;
   disabled?: boolean;
   onSelect(entry: TreeEntry): void;
-  onAction?(entry: TreeEntry, action: FileTreeAction): void;
+  onAction?(
+    entry: TreeEntry,
+    action: FileTreeAction,
+    returnFocusTarget: HTMLButtonElement | null,
+  ): void;
 }
 
 function parentPath(path: VirtualPath): string {
@@ -60,6 +64,7 @@ export function FileTree({
   const treeRef = useRef<HTMLDivElement>(null);
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [menuPath, setMenuPath] = useState<VirtualPath>();
+  const [menuItemIndex, setMenuItemIndex] = useState(0);
   const visible = useMemo(
     () => entries.filter((entry) => isVisible(entry, expanded)),
     [entries, expanded],
@@ -86,8 +91,10 @@ export function FileTree({
   useEffect(() => {
     if (!menuPath) return;
     const menu = treeRef.current?.querySelector<HTMLElement>("[role=menu]");
-    menu?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
-  }, [menuPath]);
+    menu
+      ?.querySelector<HTMLElement>('[role="menuitem"][tabindex="0"]')
+      ?.focus();
+  }, [menuItemIndex, menuPath]);
 
   useEffect(() => {
     const closeOnClickAway = (event: MouseEvent) => {
@@ -195,6 +202,11 @@ export function FileTree({
       closeMenu(true);
       return;
     }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      closeMenu(true);
+      return;
+    }
 
     const items = [
       ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
@@ -205,7 +217,7 @@ export function FileTree({
     const currentIndex = items.indexOf(
       document.activeElement as HTMLButtonElement,
     );
-    const focus = (index: number) => items.at(index)?.focus();
+    const focus = (index: number) => setMenuItemIndex(index);
 
     switch (event.key) {
       case "ArrowDown":
@@ -316,6 +328,7 @@ export function FileTree({
                       onClick={() => {
                         menuTriggerRef.current =
                           document.activeElement as HTMLButtonElement;
+                        setMenuItemIndex(0);
                         setMenuPath(menuOpen ? undefined : entry.path);
                       }}
                     >
@@ -329,14 +342,15 @@ export function FileTree({
                         aria-label={`Actions for ${entry.node.name}`}
                         onKeyDown={handleMenuKeyDown}
                       >
-                        {menuItemsFor(entry).map(([label, action]) => (
+                        {menuItemsFor(entry).map(([label, action], index) => (
                           <button
                             key={label}
                             type="button"
                             role="menuitem"
+                            tabIndex={menuItemIndex === index ? 0 : -1}
                             onClick={() => {
                               closeMenu();
-                              onAction(entry, action);
+                              onAction(entry, action, menuTriggerRef.current);
                             }}
                           >
                             {label}

@@ -15,6 +15,7 @@ interface MoveCopyDialogProps {
   ): Promise<void> | void;
   onClose(): void;
   busy?: boolean;
+  returnFocusTarget?: HTMLElement | null;
 }
 
 function parentPath(path: VirtualPath): VirtualPath {
@@ -54,6 +55,7 @@ export function MoveCopyDialog({
   onSubmit,
   onClose,
   busy = false,
+  returnFocusTarget,
 }: MoveCopyDialogProps) {
   const [name, setName] = useState(entry.node.name);
   const [destination, setDestination] = useState<string>(entry.path);
@@ -94,6 +96,8 @@ export function MoveCopyDialog({
       description={`${action} ${entry.path}.`}
       onClose={onClose}
       closeable={!busy}
+      busy={busy}
+      returnFocusTarget={returnFocusTarget}
     >
       <form className="action-dialog__form" onSubmit={submit}>
         {mode === "rename" ? (

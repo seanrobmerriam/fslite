@@ -63,4 +63,28 @@ describe("CreateDialog", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent(/single path segment/i);
   });
+
+  it("creates a folder with the exact mkdir payload", async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CreateDialog
+        directory={"/docs" as VirtualPath}
+        kind="folder"
+        onCreate={onCreate}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const name = screen.getByRole("textbox", { name: "Name" });
+    await user.clear(name);
+    await user.type(name, "guides");
+    await user.click(screen.getByRole("button", { name: "Create folder" }));
+
+    expect(onCreate).toHaveBeenCalledWith({
+      kind: "mkdir",
+      path: "/docs/guides",
+      parents: false,
+    });
+  });
 });

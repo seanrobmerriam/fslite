@@ -125,7 +125,11 @@ describe("FileTree", () => {
       screen.getByRole("menu", { name: "Actions for todo.txt" }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "Move to trash" }));
-    expect(onAction).toHaveBeenCalledWith(entries[2], "trash");
+    expect(onAction).toHaveBeenCalledWith(
+      entries[2],
+      "trash",
+      expect.any(HTMLButtonElement),
+    );
 
     await user.click(actions);
     await user.keyboard("{Escape}");
@@ -153,15 +157,25 @@ describe("FileTree", () => {
     const rename = screen.getByRole("menuitem", { name: "Rename" });
     const move = screen.getByRole("menuitem", { name: "Move" });
     expect(rename).toHaveFocus();
+    expect(rename).toHaveAttribute("tabindex", "0");
+    expect(move).toHaveAttribute("tabindex", "-1");
 
     await user.keyboard("{ArrowDown}");
     expect(move).toHaveFocus();
+    expect(rename).toHaveAttribute("tabindex", "-1");
+    expect(move).toHaveAttribute("tabindex", "0");
     await user.keyboard("{End}");
     expect(
       screen.getByRole("menuitem", { name: "Delete permanently" }),
     ).toHaveFocus();
     await user.keyboard("{Home}");
     expect(rename).toHaveFocus();
+
+    await user.keyboard("{Tab}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Actions for todo.txt" }),
+    ).toHaveFocus();
 
     await user.click(screen.getByRole("button", { name: "Outside tree" }));
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();

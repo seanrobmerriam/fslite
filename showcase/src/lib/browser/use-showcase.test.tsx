@@ -161,6 +161,27 @@ describe("useShowcase", () => {
     expect(api.operation).toHaveBeenCalledTimes(4);
   });
 
+  it("normalizes a download failure into application error state without activity or rejection", async () => {
+    const api = apiMock();
+    (api.download as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      Object.assign(new Error("Download failed."), { code: "bad_gateway" }),
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    const activities = result.current.state.activities;
+
+    await act(async () => {
+      await expect(
+        result.current.download("/readme.txt" as VirtualPath),
+      ).resolves.toBeUndefined();
+    });
+
+    expect(result.current.state.error).toMatchObject({
+      message: "Download failed.",
+    });
+    expect(result.current.state.activities).toEqual(activities);
+  });
+
   it("aborts and ignores a late initial request after unmount", async () => {
     let resolveStatus!: (value: unknown) => void;
     const api = apiMock();

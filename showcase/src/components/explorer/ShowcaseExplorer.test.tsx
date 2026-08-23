@@ -95,6 +95,7 @@ describe("ShowcaseExplorer", () => {
   it("opens a labelled create dialog at the selected directory, isolates the background, and sends its exact mutation", async () => {
     const user = userEvent.setup();
     showcaseMock.status.resetting = false;
+    showcaseMock.runOperation.mockReset();
     showcaseMock.runOperation.mockResolvedValue(undefined);
     const { container } = render(<ShowcaseExplorer />);
 
@@ -122,9 +123,11 @@ describe("ShowcaseExplorer", () => {
     );
   });
 
-  it("protects a dirty nested draft before moving, trashing, or deleting its parent directory", async () => {
+  it("guards then executes trash for a directory containing a dirty draft", async () => {
     const user = userEvent.setup();
     showcaseMock.status.resetting = false;
+    showcaseMock.runOperation.mockReset();
+    showcaseMock.runOperation.mockResolvedValue(undefined);
     showcaseMock.tree = [
       {
         path: "/docs",
@@ -156,9 +159,361 @@ describe("ShowcaseExplorer", () => {
 
     await user.click(screen.getByRole("button", { name: "Actions for docs" }));
     await user.click(screen.getByRole("menuitem", { name: "Move to trash" }));
+    await user.click(screen.getByRole("button", { name: "Move to trash" }));
 
     expect(
       screen.getByRole("dialog", { name: "Unsaved changes" }),
     ).toHaveAccessibleDescription(/currently open in the editor/i);
+    expect(showcaseMock.runOperation).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: "Continue without saving" }),
+    );
+    await waitFor(() =>
+      expect(showcaseMock.runOperation).toHaveBeenCalledWith({
+        kind: "trash",
+        path: "/docs",
+        expectedRevision: 1,
+      }),
+    );
+  });
+
+  it("guards then executes a move that changes the dirty draft path", async () => {
+    const user = userEvent.setup();
+    showcaseMock.status.resetting = false;
+    showcaseMock.runOperation.mockReset();
+    showcaseMock.runOperation.mockResolvedValue(undefined);
+    showcaseMock.tree = [
+      {
+        path: "/docs" as VirtualPath,
+        depth: 0,
+        node: {
+          workspace_id: "workspace",
+          id: "docs-move",
+          parent_id: null,
+          name: "docs",
+          kind: "directory",
+          logical_size: 0,
+          created_at_ms: 1,
+          modified_at_ms: 1,
+          accessed_at_ms: 1,
+          revision: 1,
+          attributes: {},
+        },
+      },
+    ] as TreeEntry[];
+    showcaseMock.selectedPath = "/docs" as VirtualPath;
+    showcaseMock.selectedNode = showcaseMock.tree[0]?.node;
+    showcaseMock.editor = {
+      path: "/docs/readme.txt" as VirtualPath,
+      text: "local draft",
+      original: "server copy",
+      dirty: true,
+    };
+    render(<ShowcaseExplorer />);
+
+    await user.click(screen.getByRole("button", { name: "Actions for docs" }));
+    await user.click(screen.getByRole("menuitem", { name: "Move" }));
+    const destination = screen.getByRole("textbox", { name: "Destination" });
+    await user.clear(destination);
+    await user.type(destination, "/archive/docs");
+    await user.click(screen.getByRole("button", { name: "Move" }));
+    await user.click(
+      screen.getByRole("button", { name: "Continue without saving" }),
+    );
+
+    await waitFor(() =>
+      expect(showcaseMock.runOperation).toHaveBeenCalledWith({
+        kind: "move",
+        from: "/docs",
+        to: "/archive/docs",
+      }),
+    );
+  });
+
+  it("guards then executes confirmed permanent delete for a dirty draft parent", async () => {
+    const user = userEvent.setup();
+    showcaseMock.status.resetting = false;
+    showcaseMock.runOperation.mockReset();
+    showcaseMock.runOperation.mockResolvedValue(undefined);
+    showcaseMock.tree = [
+      {
+        path: "/docs" as VirtualPath,
+        depth: 0,
+        node: {
+          workspace_id: "workspace",
+          id: "docs-delete",
+          parent_id: null,
+          name: "docs",
+          kind: "directory",
+          logical_size: 0,
+          created_at_ms: 1,
+          modified_at_ms: 1,
+          accessed_at_ms: 1,
+          revision: 1,
+          attributes: {},
+        },
+      },
+    ] as TreeEntry[];
+    showcaseMock.selectedPath = "/docs" as VirtualPath;
+    showcaseMock.selectedNode = showcaseMock.tree[0]?.node;
+    showcaseMock.editor = {
+      path: "/docs/readme.txt" as VirtualPath,
+      text: "local draft",
+      original: "server copy",
+      dirty: true,
+    };
+    render(<ShowcaseExplorer />);
+
+    await user.click(screen.getByRole("button", { name: "Actions for docs" }));
+    await user.click(
+      screen.getByRole("menuitem", { name: "Delete permanently" }),
+    );
+    await user.click(screen.getByRole("radio", { name: "Delete permanently" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Confirm full path" }),
+      "/docs",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Delete permanently" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Continue without saving" }),
+    );
+
+    await waitFor(() =>
+      expect(showcaseMock.runOperation).toHaveBeenCalledWith({
+        kind: "remove",
+        path: "/docs",
+        recursive: true,
+        confirmedPath: "/docs",
+      }),
+    );
+  });
+
+  it("guards copy targets that would overwrite the open dirty draft", async () => {
+    const user = userEvent.setup();
+    showcaseMock.status.resetting = false;
+    showcaseMock.runOperation.mockReset();
+    showcaseMock.runOperation.mockResolvedValue(undefined);
+    showcaseMock.tree = [
+      {
+        path: "/source.txt" as VirtualPath,
+        depth: 0,
+        node: {
+          workspace_id: "workspace",
+          id: "source",
+          parent_id: null,
+          name: "source.txt",
+          kind: "file",
+          logical_size: 0,
+          created_at_ms: 1,
+          modified_at_ms: 1,
+          accessed_at_ms: 1,
+          revision: 1,
+          attributes: {},
+        },
+      },
+    ] as TreeEntry[];
+    showcaseMock.selectedPath = "/source.txt" as VirtualPath;
+    showcaseMock.selectedNode = showcaseMock.tree[0]?.node;
+    showcaseMock.editor = {
+      path: "/docs/readme.txt" as VirtualPath,
+      text: "local draft",
+      original: "server copy",
+      dirty: true,
+    };
+    render(<ShowcaseExplorer />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for source.txt" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Copy" }));
+    const destination = screen.getByRole("textbox", { name: "Destination" });
+    await user.clear(destination);
+    await user.type(destination, "/docs/readme.txt");
+    await user.click(screen.getByRole("button", { name: "Copy" }));
+    expect(
+      screen.getByRole("dialog", { name: "Unsaved changes" }),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Continue without saving" }),
+    );
+
+    await waitFor(() =>
+      expect(showcaseMock.runOperation).toHaveBeenCalledWith({
+        kind: "copy",
+        from: "/source.txt",
+        to: "/docs/readme.txt",
+        recursive: false,
+      }),
+    );
+  });
+
+  it("returns focus to a tree action trigger after cancel, Escape, and success", async () => {
+    const user = userEvent.setup();
+    showcaseMock.status.resetting = false;
+    showcaseMock.runOperation.mockResolvedValue(undefined);
+    showcaseMock.tree = [
+      {
+        path: "/todo.txt" as VirtualPath,
+        depth: 0,
+        node: {
+          workspace_id: "workspace",
+          id: "todo",
+          parent_id: null,
+          name: "todo.txt",
+          kind: "file",
+          logical_size: 0,
+          created_at_ms: 1,
+          modified_at_ms: 1,
+          accessed_at_ms: 1,
+          revision: 1,
+          attributes: {},
+        },
+      },
+    ] as TreeEntry[];
+    showcaseMock.selectedPath = "/todo.txt" as VirtualPath;
+    showcaseMock.selectedNode = showcaseMock.tree[0]?.node;
+    showcaseMock.editor = {
+      path: "/todo.txt" as VirtualPath,
+      text: "server copy",
+      original: "server copy",
+      dirty: false,
+    };
+    render(<ShowcaseExplorer />);
+
+    const trigger = screen.getByRole("button", {
+      name: "Actions for todo.txt",
+    });
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(trigger).toHaveFocus();
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveFocus();
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const name = screen.getByRole("textbox", { name: "Name" });
+    await user.clear(name);
+    await user.type(name, "renamed.txt");
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(trigger).toHaveFocus();
+  });
+
+  it("requires an explicit draft decision before create-file or upload overwrite", async () => {
+    const user = userEvent.setup();
+    showcaseMock.status.resetting = false;
+    showcaseMock.runOperation.mockReset();
+    showcaseMock.runOperation.mockResolvedValue(undefined);
+    showcaseMock.upload.mockReset();
+    showcaseMock.upload.mockResolvedValue(undefined);
+    showcaseMock.tree = [
+      {
+        path: "/docs/readme.txt" as VirtualPath,
+        depth: 1,
+        node: {
+          workspace_id: "workspace",
+          id: "readme",
+          parent_id: "docs",
+          name: "readme.txt",
+          kind: "file",
+          logical_size: 0,
+          created_at_ms: 1,
+          modified_at_ms: 1,
+          accessed_at_ms: 1,
+          revision: 1,
+          attributes: {},
+        },
+      },
+    ] as TreeEntry[];
+    showcaseMock.selectedPath = "/docs/readme.txt" as VirtualPath;
+    showcaseMock.selectedNode = showcaseMock.tree[0]?.node;
+    showcaseMock.editor = {
+      path: "/docs/readme.txt" as VirtualPath,
+      text: "local draft",
+      original: "server copy",
+      dirty: true,
+    };
+    render(<ShowcaseExplorer />);
+
+    await user.click(screen.getByRole("button", { name: "New file" }));
+    const name = screen.getByRole("textbox", { name: "Name" });
+    await user.clear(name);
+    await user.type(name, "readme.txt");
+    await user.click(screen.getByRole("button", { name: "Create file" }));
+    expect(
+      screen.getByRole("dialog", { name: "Unsaved changes" }),
+    ).toBeInTheDocument();
+    expect(showcaseMock.runOperation).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: "Continue without saving" }),
+    );
+    await waitFor(() =>
+      expect(showcaseMock.runOperation).toHaveBeenCalledWith({
+        kind: "write_file",
+        path: "/docs/readme.txt",
+        text: "",
+      }),
+    );
+  });
+
+  it("requires an explicit draft decision before an upload overwrites the open path", async () => {
+    const user = userEvent.setup();
+    showcaseMock.status.resetting = false;
+    showcaseMock.upload.mockReset();
+    showcaseMock.upload.mockResolvedValue(undefined);
+    showcaseMock.tree = [
+      {
+        path: "/docs/readme.txt" as VirtualPath,
+        depth: 1,
+        node: {
+          workspace_id: "workspace",
+          id: "readme-upload",
+          parent_id: "docs",
+          name: "readme.txt",
+          kind: "file",
+          logical_size: 0,
+          created_at_ms: 1,
+          modified_at_ms: 1,
+          accessed_at_ms: 1,
+          revision: 1,
+          attributes: {},
+        },
+      },
+    ] as TreeEntry[];
+    showcaseMock.selectedPath = "/docs/readme.txt" as VirtualPath;
+    showcaseMock.selectedNode = showcaseMock.tree[0]?.node;
+    showcaseMock.editor = {
+      path: "/docs/readme.txt" as VirtualPath,
+      text: "local draft",
+      original: "server copy",
+      dirty: true,
+    };
+    render(<ShowcaseExplorer />);
+
+    const file = new File(["replacement"], "readme.txt");
+    await user.click(screen.getByRole("button", { name: "Upload" }));
+    await user.upload(screen.getByLabelText("File"), file);
+    await user.click(screen.getByRole("button", { name: "Upload file" }));
+    expect(
+      screen.getByRole("dialog", { name: "Unsaved changes" }),
+    ).toBeInTheDocument();
+    expect(showcaseMock.upload).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: "Continue without saving" }),
+    );
+    await waitFor(() =>
+      expect(showcaseMock.upload).toHaveBeenCalledWith(
+        "/docs/readme.txt",
+        file,
+      ),
+    );
   });
 });

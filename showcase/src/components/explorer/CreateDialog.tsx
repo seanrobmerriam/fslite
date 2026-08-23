@@ -12,6 +12,7 @@ interface CreateDialogProps {
   ): Promise<void> | void;
   onClose(): void;
   busy?: boolean;
+  returnFocusTarget?: HTMLElement | null;
 }
 
 function childPath(directory: VirtualPath, name: string): VirtualPath {
@@ -35,6 +36,7 @@ export function CreateDialog({
   onCreate,
   onClose,
   busy = false,
+  returnFocusTarget,
 }: CreateDialogProps) {
   const [name, setName] = useState(kind === "file" ? "note.txt" : "notes");
   const [error, setError] = useState<string>();
@@ -65,6 +67,8 @@ export function CreateDialog({
       description={`Create a ${kind} in ${directory}.`}
       onClose={onClose}
       closeable={!busy}
+      busy={busy}
+      returnFocusTarget={returnFocusTarget}
     >
       <form className="action-dialog__form" onSubmit={submit}>
         <label>

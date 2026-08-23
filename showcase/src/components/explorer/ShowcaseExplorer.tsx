@@ -24,20 +24,66 @@ function directoryFor(
   return (boundary === 0 ? "/" : path.slice(0, boundary)) as VirtualPath;
 }
 
-function actionAffectsDraft(
-  entry: TreeEntry,
-  action: FileTreeAction,
+function pathAffectsDraft(
+  path: VirtualPath,
   draftPath: VirtualPath | undefined,
 ): boolean {
-  if (!draftPath || action === "copy") return false;
-  return draftPath === entry.path || draftPath.startsWith(`${entry.path}/`);
+  return Boolean(
+    draftPath && (draftPath === path || draftPath.startsWith(`${path}/`)),
+  );
+}
+
+function operationAffectsDraft(
+  operation: PublicOperation,
+  draftPath: VirtualPath | undefined,
+): boolean {
+  if (!draftPath) return false;
+  switch (operation.kind) {
+    case "write_file":
+      return operation.path === draftPath;
+    case "copy":
+      return pathAffectsDraft(operation.to, draftPath);
+    case "move":
+      return (
+        pathAffectsDraft(operation.from, draftPath) ||
+        pathAffectsDraft(operation.to, draftPath)
+      );
+    case "trash":
+    case "remove":
+      return pathAffectsDraft(operation.path, draftPath);
+    default:
+      return false;
+  }
 }
 
 type DialogState =
-  | { kind: "create"; item: "file" | "folder"; directory: VirtualPath }
-  | { kind: "upload"; directory: VirtualPath }
-  | { kind: "move-copy"; entry: TreeEntry; mode: "rename" | "move" | "copy" }
-  | { kind: "delete"; entry: TreeEntry; initialMode: "trash" | "remove" };
+  | {
+      kind: "create";
+      item: "file" | "folder";
+      directory: VirtualPath;
+      returnFocusTarget?: HTMLElement | null;
+    }
+  | {
+      kind: "upload";
+      directory: VirtualPath;
+      returnFocusTarget?: HTMLElement | null;
+    }
+  | {
+      kind: "move-copy";
+      entry: TreeEntry;
+      mode: "rename" | "move" | "copy";
+      returnFocusTarget?: HTMLElement | null;
+    }
+  | {
+      kind: "delete";
+      entry: TreeEntry;
+      initialMode: "trash" | "remove";
+      returnFocusTarget?: HTMLElement | null;
+    };
+
+type DraftGuardState =
+  | { kind: "operation"; operation: PublicOperation; dialog: DialogState }
+  | { kind: "upload"; path: VirtualPath; file: File; dialog: DialogState };
 
 /** The only hydrated explorer island; all browser API calls remain behind useShowcase. */
 export function ShowcaseExplorer() {
@@ -53,7 +99,7 @@ export function ShowcaseExplorer() {
     upload,
   } = useShowcase();
   const [dialog, setDialog] = useState<DialogState>();
-  const [draftGuard, setDraftGuard] = useState<DialogState>();
+  const [draftGuard, setDraftGuard] = useState<DraftGuardState>();
   const resetting = state.status?.resetting ?? false;
   const busy = Boolean(state.busyAction);
   const mutationDisabled = resetting || busy;
@@ -80,21 +126,44 @@ export function ShowcaseExplorer() {
       setDialog({ kind: "upload", directory: selectedDirectory });
   }, [mutationDisabled, selectedDirectory]);
   const completeOperation = useCallback(
-    async (operation: PublicOperation) => {
+    async (operation: PublicOperation, source: DialogState) => {
+      if (
+        state.editor.dirty &&
+        operationAffectsDraft(operation, state.editor.path)
+      ) {
+        setDialog(undefined);
+        setDraftGuard({ kind: "operation", operation, dialog: source });
+        return;
+      }
       await runOperation(operation);
       closeDialog();
     },
-    [closeDialog, runOperation],
+    [closeDialog, runOperation, state.editor.dirty, state.editor.path],
   );
   const completeUpload = useCallback(
-    async (path: VirtualPath, file: File) => {
+    async (path: VirtualPath, file: File, source: DialogState) => {
+      if (
+        state.editor.dirty &&
+        operationAffectsDraft(
+          { kind: "write_file", path, text: "" },
+          state.editor.path,
+        )
+      ) {
+        setDialog(undefined);
+        setDraftGuard({ kind: "upload", path, file, dialog: source });
+        return;
+      }
       await upload(path, file);
       closeDialog();
     },
-    [closeDialog, upload],
+    [closeDialog, state.editor.dirty, state.editor.path, upload],
   );
   const openNodeAction = useCallback(
-    (entry: TreeEntry, action: FileTreeAction) => {
+    (
+      entry: TreeEntry,
+      action: FileTreeAction,
+      returnFocusTarget: HTMLButtonElement | null,
+    ) => {
       if (mutationDisabled) return;
       if (action === "download") {
         void download(entry.path);
@@ -102,23 +171,31 @@ export function ShowcaseExplorer() {
       }
       const next: DialogState =
         action === "rename" || action === "move" || action === "copy"
-          ? { kind: "move-copy", entry, mode: action }
+          ? { kind: "move-copy", entry, mode: action, returnFocusTarget }
           : {
               kind: "delete",
               entry,
               initialMode: action === "remove" ? "remove" : "trash",
+              returnFocusTarget,
             };
-      if (
-        state.editor.dirty &&
-        actionAffectsDraft(entry, action, state.editor.path)
-      ) {
-        setDraftGuard(next);
-      } else {
-        setDialog(next);
-      }
+      setDialog(next);
     },
-    [download, mutationDisabled, state.editor.dirty, state.editor.path],
+    [download, mutationDisabled],
   );
+
+  const continueDraftGuard = useCallback(async () => {
+    if (!draftGuard) return;
+    try {
+      if (draftGuard.kind === "operation") {
+        await runOperation(draftGuard.operation);
+      } else {
+        await upload(draftGuard.path, draftGuard.file);
+      }
+      setDraftGuard(undefined);
+    } catch {
+      // The shared mutation controller already publishes the safe error state.
+    }
+  }, [draftGuard, runOperation, upload]);
 
   const copyUnsavedText = useCallback(async () => {
     const text = state.editor.text;
@@ -209,7 +286,8 @@ export function ShowcaseExplorer() {
           directory={dialog.directory}
           kind={dialog.item}
           busy={busy}
-          onCreate={completeOperation}
+          returnFocusTarget={dialog.returnFocusTarget}
+          onCreate={(operation) => completeOperation(operation, dialog)}
           onClose={closeDialog}
         />
       ) : null}
@@ -217,7 +295,8 @@ export function ShowcaseExplorer() {
         <UploadDialog
           directory={dialog.directory}
           busy={busy}
-          onUpload={completeUpload}
+          returnFocusTarget={dialog.returnFocusTarget}
+          onUpload={(path, file) => completeUpload(path, file, dialog)}
           onClose={closeDialog}
         />
       ) : null}
@@ -226,7 +305,8 @@ export function ShowcaseExplorer() {
           entry={dialog.entry}
           mode={dialog.mode}
           busy={busy}
-          onSubmit={completeOperation}
+          returnFocusTarget={dialog.returnFocusTarget}
+          onSubmit={(operation) => completeOperation(operation, dialog)}
           onClose={closeDialog}
         />
       ) : null}
@@ -235,7 +315,8 @@ export function ShowcaseExplorer() {
           entry={dialog.entry}
           initialMode={dialog.initialMode}
           busy={busy}
-          onSubmit={completeOperation}
+          returnFocusTarget={dialog.returnFocusTarget}
+          onSubmit={(operation) => completeOperation(operation, dialog)}
           onClose={closeDialog}
         />
       ) : null}
@@ -244,11 +325,15 @@ export function ShowcaseExplorer() {
           title="Unsaved changes"
           description="This action changes the server item currently open in the editor. Your local draft will remain here, but it will no longer match the server item."
           onClose={() => setDraftGuard(undefined)}
+          returnFocusTarget={draftGuard.dialog.returnFocusTarget}
+          busy={busy}
+          closeable={!busy}
         >
           <div className="action-dialog__actions action-dialog__actions--guard">
             <button
               type="button"
               className="button button--quiet"
+              disabled={busy}
               onClick={() => setDraftGuard(undefined)}
             >
               Cancel
@@ -256,10 +341,8 @@ export function ShowcaseExplorer() {
             <button
               type="button"
               className="button button--danger"
-              onClick={() => {
-                setDialog(draftGuard);
-                setDraftGuard(undefined);
-              }}
+              disabled={busy}
+              onClick={() => void continueDraftGuard()}
             >
               Continue without saving
             </button>

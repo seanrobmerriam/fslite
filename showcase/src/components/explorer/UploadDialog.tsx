@@ -9,6 +9,7 @@ interface UploadDialogProps {
   onUpload(path: VirtualPath, file: File): Promise<void> | void;
   onClose(): void;
   busy?: boolean;
+  returnFocusTarget?: HTMLElement | null;
 }
 
 function uploadPath(directory: VirtualPath, file: File): VirtualPath {
@@ -30,6 +31,7 @@ export function UploadDialog({
   onUpload,
   onClose,
   busy = false,
+  returnFocusTarget,
 }: UploadDialogProps) {
   const [file, setFile] = useState<File>();
   const [error, setError] = useState<string>();
@@ -65,6 +67,8 @@ export function UploadDialog({
       description={`Upload one file to ${directory}.`}
       onClose={onClose}
       closeable={!busy}
+      busy={busy}
+      returnFocusTarget={returnFocusTarget}
     >
       <form className="action-dialog__form" onSubmit={submit}>
         <label>

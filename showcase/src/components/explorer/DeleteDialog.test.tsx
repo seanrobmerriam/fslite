@@ -24,6 +24,19 @@ const file = {
   },
 } satisfies TreeEntry;
 
+const directory = {
+  ...file,
+  path: "/docs" as VirtualPath,
+  depth: 0,
+  node: {
+    ...file.node,
+    id: "docs",
+    parent_id: null,
+    name: "docs",
+    kind: "directory" as const,
+  },
+} satisfies TreeEntry;
+
 describe("DeleteDialog", () => {
   it("uses trash by default with the selected entry revision", async () => {
     const user = userEvent.setup();
@@ -69,6 +82,32 @@ describe("DeleteDialog", () => {
       path: "/docs/readme.txt",
       recursive: false,
       confirmedPath: "/docs/readme.txt",
+    });
+  });
+
+  it("marks permanent directory deletion recursive after exact confirmation", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DeleteDialog entry={directory} onSubmit={onSubmit} onClose={vi.fn()} />,
+    );
+
+    await user.click(
+      screen.getByRole("radio", { name: /delete permanently/i }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Confirm full path" }),
+      "/docs",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Delete permanently" }),
+    );
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      kind: "remove",
+      path: "/docs",
+      recursive: true,
+      confirmedPath: "/docs",
     });
   });
 });

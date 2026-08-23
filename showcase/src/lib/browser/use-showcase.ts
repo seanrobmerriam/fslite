@@ -355,11 +355,15 @@ export function useShowcase(api?: ShowcaseApiLike) {
 
   const download = useCallback(
     async (path: VirtualPath): Promise<void> => {
-      const result = await apiRef.current.download(path);
-      dispatchIfMounted({
-        type: "activity_appended",
-        activity: result.activity,
-      });
+      try {
+        const result = await apiRef.current.download(path);
+        dispatchIfMounted({
+          type: "activity_appended",
+          activity: result.activity,
+        });
+      } catch (error) {
+        dispatchIfMounted({ type: "error_set", error: error as Error });
+      }
     },
     [dispatchIfMounted],
   );
