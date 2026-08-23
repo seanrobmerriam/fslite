@@ -319,7 +319,8 @@ export function FileTree({
       >
         {visible.length === 0 ? (
           <p className="tree-empty">
-            No files yet. Make a note or a folder to begin.
+            No files are available yet. Seeded files will appear here when the
+            workspace is ready.
           </p>
         ) : (
           visible.map((entry) => {

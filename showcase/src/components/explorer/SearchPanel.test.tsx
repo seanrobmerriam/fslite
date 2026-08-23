@@ -6,6 +6,14 @@ import type { VirtualPath } from "../../lib/shared/path";
 import { SearchPanel } from "./SearchPanel";
 
 describe("SearchPanel", () => {
+  it("keeps search-mode radios in compact labelled rows", () => {
+    render(<SearchPanel onSearch={vi.fn()} onSelectPath={vi.fn()} />);
+
+    expect(screen.getByRole("radio", { name: "Filename" })).toHaveClass(
+      "search-mode-option",
+    );
+  });
+
   it("emits the fixed filename, absolute glob, and content operation payloads", async () => {
     const user = userEvent.setup();
     const onSearch = vi

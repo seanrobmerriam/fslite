@@ -5,6 +5,20 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkspaceStatus } from "./WorkspaceStatus";
 
 describe("WorkspaceStatus", () => {
+  it("calls browser timers through their owning global object", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/components/explorer/WorkspaceStatus.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain(
+      "setInterval: globalThis.setInterval.bind(globalThis)",
+    );
+    expect(source).toContain(
+      "clearInterval: globalThis.clearInterval.bind(globalThis)",
+    );
+  });
+
   it("uses monotonic elapsed time rather than wall-clock jumps for the reset countdown", () => {
     vi.useFakeTimers({ now: 2_000 });
     let monotonicNow = 10_000;
@@ -136,3 +150,5 @@ describe("WorkspaceStatus", () => {
     vi.useRealTimers();
   });
 });
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";

@@ -5,6 +5,7 @@ import type { WorkspaceUsage } from "../../lib/shared/contracts";
 
 interface WorkspaceStatusProps {
   status: BrowserStatus | undefined;
+  unavailable?: boolean;
   clock?: MonotonicClock;
 }
 
@@ -22,8 +23,8 @@ const defaultClock: MonotonicClock = {
       ? performance.now()
       : Date.now();
   },
-  setInterval: globalThis.setInterval,
-  clearInterval: globalThis.clearInterval,
+  setInterval: globalThis.setInterval.bind(globalThis),
+  clearInterval: globalThis.clearInterval.bind(globalThis),
 };
 
 function usageOf(value: unknown): Partial<WorkspaceUsage> {
@@ -46,6 +47,7 @@ function formatCountdown(remainingMs: number): string {
 /** Countdown anchors to server time, then advances by locally measured elapsed time. */
 export function WorkspaceStatus({
   status,
+  unavailable = false,
   clock = defaultClock,
 }: WorkspaceStatusProps) {
   const [elapsed, setElapsed] = useState(0);
@@ -71,8 +73,16 @@ export function WorkspaceStatus({
 
   if (!status) {
     return (
-      <p className="workspace-status workspace-status--loading">
-        Connecting to workspace…
+      <p
+        className={`workspace-status workspace-status--loading${
+          unavailable ? " workspace-status--unavailable" : ""
+        }`}
+        role="status"
+        aria-label="Workspace availability"
+      >
+        {unavailable
+          ? "Backend unavailable. Actions are unavailable until the workspace reconnects."
+          : "Connecting to workspace…"}
       </p>
     );
   }

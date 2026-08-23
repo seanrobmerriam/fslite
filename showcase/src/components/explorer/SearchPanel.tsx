@@ -102,8 +102,9 @@ export function SearchPanel({
         <fieldset disabled={busy || loading}>
           <legend>Search mode</legend>
           {(["filename", "glob", "contents"] as const).map((option) => (
-            <label key={option}>
+            <label className="search-mode-option" key={option}>
               <input
+                className="search-mode-option"
                 type="radio"
                 name="search-mode"
                 checked={mode === option}

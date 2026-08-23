@@ -112,7 +112,8 @@ export function ShowcaseExplorer() {
   >("explorer");
   const resetting = state.status?.resetting ?? false;
   const busy = Boolean(state.busyAction);
-  const mutationDisabled = resetting || busy;
+  const workspaceUnavailable = !state.status;
+  const mutationDisabled = resetting || busy || workspaceUnavailable;
   const selectedDirectory = directoryFor(
     state.selectedPath,
     state.selectedNode?.kind,
@@ -291,8 +292,21 @@ export function ShowcaseExplorer() {
         aria-hidden={modalOpen}
         inert={modalOpen}
       >
-        <WorkspaceStatus status={state.status} />
+        <WorkspaceStatus
+          status={state.status}
+          unavailable={workspaceUnavailable && Boolean(state.error)}
+        />
         <ToastRegion error={state.error} resetting={resetting} />
+        {resetting ? (
+          <div
+            className="workspace-resetting-overlay"
+            role="status"
+            aria-label="Workspace reset in progress"
+          >
+            Reset in progress — editing remains visible, but server changes are
+            temporarily disabled.
+          </div>
+        ) : null}
         <div
           role="tablist"
           aria-label="Explorer views"
@@ -360,7 +374,7 @@ export function ShowcaseExplorer() {
               <FileTree
                 entries={state.tree}
                 selectedPath={state.selectedPath}
-                disabled={busy}
+                disabled={mutationDisabled}
                 onSelect={(entry) => void selectEntry(entry)}
                 onAction={openNodeAction}
               />
