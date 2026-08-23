@@ -21,6 +21,56 @@ const textNode = {
 } satisfies Node;
 
 describe("FileEditor", () => {
+  it("keeps a local dirty draft visible and editable while server actions are unavailable", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <FileEditor
+        node={textNode}
+        path={"/readme.txt" as VirtualPath}
+        text="local draft"
+        dirty
+        busy={false}
+        resetting={false}
+        unavailable
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDownload={vi.fn()}
+      />,
+    );
+
+    const editor = screen.getByRole("textbox", { name: "File contents" });
+    expect(editor).toHaveValue("local draft");
+    expect(editor).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save file" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Download file" }),
+    ).toBeDisabled();
+    await user.type(editor, "!");
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it("keeps a resetting dirty draft visible while saving stays disabled", () => {
+    render(
+      <FileEditor
+        node={textNode}
+        path={"/readme.txt" as VirtualPath}
+        text="local draft"
+        dirty
+        busy={false}
+        resetting
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDownload={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: "File contents" })).toHaveValue(
+      "local draft",
+    );
+    expect(screen.getByRole("button", { name: "Save file" })).toBeDisabled();
+  });
+
   it("edits dirty text and saves from the button or Ctrl/Cmd+S", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

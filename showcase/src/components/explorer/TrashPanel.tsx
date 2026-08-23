@@ -9,6 +9,7 @@ interface TrashPage {
 }
 export interface TrashPanelProps {
   busy?: boolean;
+  unavailable?: boolean;
   active?: boolean;
   onList(): Promise<TrashPage>;
   onOperation(operation: PublicOperation): Promise<unknown>;
@@ -17,6 +18,7 @@ export interface TrashPanelProps {
 /** Recoverable trash with deliberate destination and purge-name confirmations. */
 export function TrashPanel({
   busy = false,
+  unavailable = false,
   active = true,
   onList,
   onOperation,
@@ -29,6 +31,7 @@ export function TrashPanel({
   const [destination, setDestination] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const refresh = useCallback(async () => {
+    if (unavailable) return;
     setLoading(true);
     setError(undefined);
     try {
@@ -40,10 +43,10 @@ export function TrashPanel({
     } finally {
       setLoading(false);
     }
-  }, [onList]);
+  }, [onList, unavailable]);
   useEffect(() => {
-    if (active) void refresh();
-  }, [active, refresh]);
+    if (active && !unavailable) void refresh();
+  }, [active, refresh, unavailable]);
   const restoreItem = async () => {
     if (!restore) return;
     const target = destination.trim();
@@ -89,12 +92,17 @@ export function TrashPanel({
         <button
           type="button"
           className="button button--quiet"
-          disabled={busy || loading}
+          disabled={busy || unavailable || loading}
           onClick={() => void refresh()}
         >
           Refresh trash
         </button>
       </div>
+      {unavailable ? (
+        <p className="panel-empty">
+          Trash is unavailable until reconnect. Use Retry connection above.
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="panel-error">
           {error}
@@ -111,7 +119,7 @@ export function TrashPanel({
           <button
             type="button"
             className="button button--quiet"
-            disabled={busy || loading}
+            disabled={busy || unavailable || loading}
             onClick={() => {
               setRestore(item);
               setPurge(undefined);
@@ -122,7 +130,7 @@ export function TrashPanel({
           <button
             type="button"
             className="button button--danger"
-            disabled={busy || loading}
+            disabled={busy || unavailable || loading}
             onClick={() => {
               setPurge(item);
               setRestore(undefined);
@@ -143,13 +151,14 @@ export function TrashPanel({
             <input
               aria-label="Restore destination"
               value={destination}
+              disabled={unavailable}
               onChange={(event) => setDestination(event.target.value)}
             />
           </label>
           <button
             type="button"
             className="button button--accent"
-            disabled={busy || loading}
+            disabled={busy || unavailable || loading}
             onClick={() => void restoreItem()}
           >
             Confirm restore
@@ -167,13 +176,16 @@ export function TrashPanel({
             <input
               aria-label="Confirm name"
               value={confirmation}
+              disabled={unavailable}
               onChange={(event) => setConfirmation(event.target.value)}
             />
           </label>
           <button
             type="button"
             className="button button--danger"
-            disabled={busy || loading || confirmation !== purge.node.name}
+            disabled={
+              busy || unavailable || loading || confirmation !== purge.node.name
+            }
             onClick={() => void purgeItem()}
           >
             Purge permanently

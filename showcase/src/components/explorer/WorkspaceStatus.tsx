@@ -5,7 +5,7 @@ import type { WorkspaceUsage } from "../../lib/shared/contracts";
 
 interface WorkspaceStatusProps {
   status: BrowserStatus | undefined;
-  unavailable?: boolean;
+  availability?: "checking" | "ready" | "unavailable";
   clock?: MonotonicClock;
 }
 
@@ -15,17 +15,33 @@ export interface MonotonicClock {
   clearInterval: typeof globalThis.clearInterval;
 }
 
+export interface BrowserTimerHost {
+  performance?: { now(): number };
+  setInterval(callback: TimerHandler, delay?: number): unknown;
+  clearInterval(timer: unknown): void;
+}
+
 const MEBIBYTE = 1_048_576;
-const defaultClock: MonotonicClock = {
-  monotonicNow: () => {
-    const performance = globalThis.performance;
-    return typeof performance?.now === "function"
-      ? performance.now()
-      : Date.now();
-  },
-  setInterval: globalThis.setInterval.bind(globalThis),
-  clearInterval: globalThis.clearInterval.bind(globalThis),
-};
+export function createDefaultClock(
+  timerHost: BrowserTimerHost = globalThis,
+): MonotonicClock {
+  return {
+    monotonicNow: () => {
+      const performance = timerHost.performance;
+      return typeof performance?.now === "function"
+        ? performance.now()
+        : Date.now();
+    },
+    setInterval: timerHost.setInterval.bind(
+      timerHost,
+    ) as typeof globalThis.setInterval,
+    clearInterval: timerHost.clearInterval.bind(
+      timerHost,
+    ) as typeof globalThis.clearInterval,
+  };
+}
+
+const defaultClock = createDefaultClock();
 
 function usageOf(value: unknown): Partial<WorkspaceUsage> {
   return value && typeof value === "object"
@@ -47,7 +63,7 @@ function formatCountdown(remainingMs: number): string {
 /** Countdown anchors to server time, then advances by locally measured elapsed time. */
 export function WorkspaceStatus({
   status,
-  unavailable = false,
+  availability = status ? "ready" : "checking",
   clock = defaultClock,
 }: WorkspaceStatusProps) {
   const [elapsed, setElapsed] = useState(0);
@@ -71,7 +87,8 @@ export function WorkspaceStatus({
     return () => clock.clearInterval(timer);
   }, [clock]);
 
-  if (!status) {
+  if (!status || availability !== "ready") {
+    const unavailable = availability === "unavailable";
     return (
       <p
         className={`workspace-status workspace-status--loading${

@@ -1,5 +1,7 @@
 interface ToolbarProps {
-  disabled: boolean;
+  actionsDisabled: boolean;
+  refreshDisabled: boolean;
+  refreshLabel?: string;
   onRefresh(): void;
   onNewFile(): void;
   onNewFolder(): void;
@@ -7,7 +9,9 @@ interface ToolbarProps {
 }
 
 export function Toolbar({
-  disabled,
+  actionsDisabled,
+  refreshDisabled,
+  refreshLabel = "Refresh files",
   onRefresh,
   onNewFile,
   onNewFolder,
@@ -18,7 +22,7 @@ export function Toolbar({
       <button
         type="button"
         className="button button--accent"
-        disabled={disabled}
+        disabled={actionsDisabled}
         onClick={onNewFile}
         title="Create a text file"
       >
@@ -27,7 +31,7 @@ export function Toolbar({
       <button
         type="button"
         className="button button--quiet"
-        disabled={disabled}
+        disabled={actionsDisabled}
         onClick={onNewFolder}
         title="Create a directory"
       >
@@ -36,7 +40,7 @@ export function Toolbar({
       <button
         type="button"
         className="button button--quiet"
-        disabled={disabled}
+        disabled={actionsDisabled}
         onClick={onUpload}
         title="Upload one file"
       >
@@ -44,13 +48,17 @@ export function Toolbar({
       </button>
       <button
         type="button"
-        className="icon-button"
-        disabled={disabled}
+        className={
+          refreshLabel === "Retry connection"
+            ? "button button--quiet"
+            : "icon-button"
+        }
+        disabled={refreshDisabled}
         onClick={onRefresh}
-        aria-label="Refresh files"
-        title="Refresh files"
+        aria-label={refreshLabel}
+        title={refreshLabel}
       >
-        ↻
+        {refreshLabel === "Retry connection" ? refreshLabel : "↻"}
       </button>
     </div>
   );

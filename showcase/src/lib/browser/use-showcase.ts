@@ -41,6 +41,13 @@ function isRevisionConflict(
   );
 }
 
+function isAvailabilityFailure(error: unknown): boolean {
+  if (error instanceof ShowcaseError) {
+    return error.code === "upstream_unavailable";
+  }
+  return error instanceof TypeError;
+}
+
 function decodeText(data: unknown): string {
   if (typeof data === "string") {
     return data;
@@ -123,12 +130,12 @@ export function useShowcase(api?: ShowcaseApiLike) {
       try {
         const status = await apiRef.current.status(controller.signal);
         if (!current()) return [];
-        dispatch({ type: "status_loaded", status });
         const tree = await apiRef.current.operation<{ items: TreeEntry[] }>(
           { kind: "tree", path: "/" as VirtualPath },
           controller.signal,
         );
         if (!current()) return [];
+        dispatch({ type: "status_loaded", status });
         dispatch({
           type: "tree_loaded",
           entries: tree.data.items ?? [],
@@ -137,6 +144,7 @@ export function useShowcase(api?: ShowcaseApiLike) {
         if (!background) {
           dispatch({ type: "activity_appended", activity: tree.activity });
         }
+        dispatch({ type: "availability_changed", availability: "ready" });
         dispatch({ type: "error_set", error: undefined });
         return tree.data.items ?? [];
       } catch (error) {
@@ -147,6 +155,10 @@ export function useShowcase(api?: ShowcaseApiLike) {
           if (!background && error instanceof ShowcaseError && error.activity) {
             dispatch({ type: "activity_appended", activity: error.activity });
           }
+          dispatch({
+            type: "availability_changed",
+            availability: "unavailable",
+          });
           dispatch({ type: "error_set", error: error as Error });
         }
         return [];
@@ -234,6 +246,12 @@ export function useShowcase(api?: ShowcaseApiLike) {
             message: error.message,
           });
         }
+        if (isAvailabilityFailure(error)) {
+          dispatchIfMounted({
+            type: "availability_changed",
+            availability: "unavailable",
+          });
+        }
         dispatchIfMounted({ type: "error_set", error: error as Error });
         throw error;
       } finally {
@@ -300,6 +318,12 @@ export function useShowcase(api?: ShowcaseApiLike) {
             dispatchIfMounted({
               type: "activity_appended",
               activity: error.activity,
+            });
+          }
+          if (isAvailabilityFailure(error)) {
+            dispatchIfMounted({
+              type: "availability_changed",
+              availability: "unavailable",
             });
           }
           dispatchIfMounted({ type: "error_set", error: error as Error });
@@ -381,6 +405,12 @@ export function useShowcase(api?: ShowcaseApiLike) {
           if (error instanceof ShowcaseError && error.activity) {
             dispatch({ type: "activity_appended", activity: error.activity });
           }
+          if (isAvailabilityFailure(error)) {
+            dispatchIfMounted({
+              type: "availability_changed",
+              availability: "unavailable",
+            });
+          }
           dispatch({ type: "error_set", error: error as Error });
         }
       } finally {
@@ -449,6 +479,12 @@ export function useShowcase(api?: ShowcaseApiLike) {
           dispatchIfMounted({
             type: "activity_appended",
             activity: error.activity,
+          });
+        }
+        if (isAvailabilityFailure(error)) {
+          dispatchIfMounted({
+            type: "availability_changed",
+            availability: "unavailable",
           });
         }
         dispatchIfMounted({ type: "error_set", error: error as Error });

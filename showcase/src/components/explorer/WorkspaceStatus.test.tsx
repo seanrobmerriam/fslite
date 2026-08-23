@@ -2,21 +2,40 @@ import { render, screen } from "@testing-library/react";
 import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { WorkspaceStatus } from "./WorkspaceStatus";
+import { createDefaultClock, WorkspaceStatus } from "./WorkspaceStatus";
 
 describe("WorkspaceStatus", () => {
-  it("calls browser timers through their owning global object", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "src/components/explorer/WorkspaceStatus.tsx"),
-      "utf8",
+  it("binds default browser timers to their receiver and cleans up on unmount", () => {
+    const setInterval = vi.fn(function (this: unknown) {
+      expect(this).toBe(timerHost);
+      return 42;
+    });
+    const clearInterval = vi.fn(function (this: unknown, timer: unknown) {
+      expect(this).toBe(timerHost);
+      expect(timer).toBe(42);
+    });
+    const timerHost = {
+      performance: { now: () => 1 },
+      setInterval,
+      clearInterval,
+    };
+    const { unmount } = render(
+      <WorkspaceStatus
+        clock={createDefaultClock(timerHost)}
+        status={{
+          ready: true,
+          generation: 1,
+          resetting: false,
+          now: 1,
+          nextResetAt: 2,
+          usage: {},
+        }}
+      />,
     );
 
-    expect(source).toContain(
-      "setInterval: globalThis.setInterval.bind(globalThis)",
-    );
-    expect(source).toContain(
-      "clearInterval: globalThis.clearInterval.bind(globalThis)",
-    );
+    expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 1_000);
+    unmount();
+    expect(clearInterval).toHaveBeenCalledTimes(1);
   });
 
   it("uses monotonic elapsed time rather than wall-clock jumps for the reset countdown", () => {
@@ -150,5 +169,3 @@ describe("WorkspaceStatus", () => {
     vi.useRealTimers();
   });
 });
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";

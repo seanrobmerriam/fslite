@@ -11,6 +11,7 @@ interface FileEditorProps {
   binary?: boolean;
   busy: boolean;
   resetting: boolean;
+  unavailable?: boolean;
   onChange(text: string): void;
   onSave(): Promise<void> | void;
   onDownload(path: VirtualPath): Promise<void> | void;
@@ -24,11 +25,12 @@ export function FileEditor({
   binary = false,
   busy,
   resetting,
+  unavailable = false,
   onChange,
   onSave,
   onDownload,
 }: FileEditorProps) {
-  const mutationDisabled = busy || resetting;
+  const mutationDisabled = busy || resetting || unavailable;
   const canSave = Boolean(path && !binary && dirty && !mutationDisabled);
   const saveWithKeyboard = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
@@ -95,7 +97,7 @@ export function FileEditor({
           <textarea
             aria-label="File contents"
             value={text}
-            disabled={mutationDisabled}
+            disabled={busy || resetting}
             spellCheck={false}
             onChange={(event) => onChange(event.target.value)}
             onKeyDown={saveWithKeyboard}

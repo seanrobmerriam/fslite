@@ -21,6 +21,7 @@ export interface RevisionConflict {
 
 export interface ShowcaseState {
   status: BrowserStatus | undefined;
+  availability: "checking" | "ready" | "unavailable";
   tree: readonly TreeEntry[];
   selectedPath: VirtualPath | undefined;
   selectedNode: Node | undefined;
@@ -37,6 +38,10 @@ export interface ShowcaseState {
 
 export type ShowcaseAction =
   | { type: "status_loaded"; status: BrowserStatus }
+  | {
+      type: "availability_changed";
+      availability: ShowcaseState["availability"];
+    }
   | { type: "tree_loaded"; entries: readonly TreeEntry[]; background: boolean }
   | { type: "selected"; entry: TreeEntry }
   | {
@@ -67,6 +72,7 @@ export type ShowcaseAction =
 
 export const initialShowcaseState: ShowcaseState = {
   status: undefined,
+  availability: "checking",
   tree: [],
   selectedPath: undefined,
   selectedNode: undefined,
@@ -99,6 +105,8 @@ export function showcaseReducer(
   switch (action.type) {
     case "status_loaded":
       return { ...state, status: action.status };
+    case "availability_changed":
+      return { ...state, availability: action.availability };
     case "tree_loaded":
       return { ...state, tree: action.entries };
     case "selected":

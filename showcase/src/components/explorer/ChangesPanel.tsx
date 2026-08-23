@@ -8,6 +8,7 @@ interface ChangePage {
 }
 export interface ChangesPanelProps {
   active?: boolean;
+  unavailable?: boolean;
   generation: number | undefined;
   onLoad(after?: string): Promise<ChangePage>;
 }
@@ -15,6 +16,7 @@ export interface ChangesPanelProps {
 /** Cursor pages are appended once, in server sequence order, and reset per generation. */
 export function ChangesPanel({
   active = true,
+  unavailable = false,
   generation,
   onLoad,
 }: ChangesPanelProps) {
@@ -25,6 +27,7 @@ export function ChangesPanel({
   const epochRef = useRef(0);
   const load = useCallback(
     async (after?: string, replace = false) => {
+      if (unavailable) return;
       const epoch = ++epochRef.current;
       setLoading(true);
       setError(undefined);
@@ -51,20 +54,25 @@ export function ChangesPanel({
         if (epoch === epochRef.current) setLoading(false);
       }
     },
-    [onLoad],
+    [onLoad, unavailable],
   );
   useEffect(() => {
     epochRef.current += 1;
     setItems([]);
     setCursor(undefined);
     setError(undefined);
-    if (active) void load(undefined, true);
-  }, [active, generation, load]);
+    if (active && !unavailable) void load(undefined, true);
+  }, [active, generation, load, unavailable]);
   return (
     <section className="discovery-panel" aria-label="Changes">
       <div className="panel-heading">
         <h2>Changes</h2>
       </div>
+      {unavailable ? (
+        <p className="panel-empty">
+          Changes are unavailable until reconnect. Use Retry connection above.
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="panel-error">
           {error}
@@ -94,7 +102,7 @@ export function ChangesPanel({
         <button
           type="button"
           className="button button--quiet"
-          disabled={loading}
+          disabled={loading || unavailable}
           onClick={() => void load(cursor)}
         >
           Load more changes

@@ -88,6 +88,94 @@ afterEach(() => {
 });
 
 describe("useShowcase", () => {
+  it("transitions from ready to unavailable on refresh failure and recovers on retry", async () => {
+    const api = apiMock();
+    const { result } = renderHook(() => useShowcase(api));
+
+    await waitFor(() =>
+      expect(
+        (result.current.state as { availability?: string }).availability,
+      ).toBe("ready"),
+    );
+    const priorStatus = result.current.state.status;
+    (api.status as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new ShowcaseError(
+        "upstream_unavailable",
+        "The filesystem service is unavailable.",
+        503,
+      ),
+    );
+
+    await act(async () => {
+      await result.current.refresh(false);
+    });
+
+    expect(
+      (result.current.state as { availability?: string }).availability,
+    ).toBe("unavailable");
+    expect(result.current.state.status).toEqual(priorStatus);
+    expect(result.current.state.tree).toEqual(tree.items);
+
+    await act(async () => {
+      await result.current.refresh(false);
+    });
+
+    expect(
+      (result.current.state as { availability?: string }).availability,
+    ).toBe("ready");
+    expect(result.current.state.error).toBeUndefined();
+  });
+
+  it("marks a tree refresh unavailable while preserving the last complete status", async () => {
+    const api = apiMock();
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    const priorStatus = result.current.state.status;
+    (api.operation as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new ShowcaseError(
+        "upstream_unavailable",
+        "The filesystem service is unavailable.",
+        503,
+      ),
+    );
+
+    await act(async () => {
+      await result.current.refresh(false);
+    });
+
+    expect(result.current.state.availability).toBe("unavailable");
+    expect(result.current.state.status).toEqual(priorStatus);
+  });
+
+  it("does not mark validation, conflict, rate, or reset errors unavailable", async () => {
+    const api = apiMock();
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() =>
+      expect(result.current.state.availability).toBe("ready"),
+    );
+
+    for (const code of [
+      "invalid_request",
+      "revision_conflict",
+      "rate_limited",
+      "workspace_resetting",
+    ]) {
+      (api.operation as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new ShowcaseError(code, code, 409),
+      );
+      await act(async () => {
+        await expect(
+          result.current.runOperation({
+            kind: "mkdir",
+            path: `/${code}` as VirtualPath,
+            parents: false,
+          }),
+        ).rejects.toMatchObject({ code });
+      });
+      expect(result.current.state.availability).toBe("ready");
+    }
+  });
+
   it("keeps a nullable reset timestamp in browser state", async () => {
     const api = apiMock();
     (api.status as ReturnType<typeof vi.fn>).mockResolvedValue({

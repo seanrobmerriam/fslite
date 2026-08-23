@@ -16,6 +16,7 @@ interface SearchPage {
 
 export interface SearchPanelProps {
   busy?: boolean;
+  unavailable?: boolean;
   entries?: readonly TreeEntry[];
   onSearch(operation: PublicOperation): Promise<SearchPage>;
   onSelectPath(path: VirtualPath): void;
@@ -39,6 +40,7 @@ function itemPath(
 /** Fixed, validated discovery requests; results can reopen a matching tree item. */
 export function SearchPanel({
   busy = false,
+  unavailable = false,
   entries = [],
   onSearch,
   onSelectPath,
@@ -99,7 +101,7 @@ export function SearchPanel({
         <h2>Search</h2>
       </div>
       <form onSubmit={(event) => void submit(event)}>
-        <fieldset disabled={busy || loading}>
+        <fieldset disabled={busy || unavailable || loading}>
           <legend>Search mode</legend>
           {(["filename", "glob", "contents"] as const).map((option) => (
             <label className="search-mode-option" key={option}>
@@ -140,6 +142,11 @@ export function SearchPanel({
           </button>
         </fieldset>
       </form>
+      {unavailable ? (
+        <p className="panel-empty">
+          Search is unavailable until reconnect. Use Retry connection above.
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="panel-error">
           {error}
@@ -162,7 +169,7 @@ export function SearchPanel({
                   <button
                     type="button"
                     className="result-row"
-                    disabled={!path}
+                    disabled={!path || unavailable}
                     onClick={() => path && onSelectPath(path)}
                   >
                     {label}

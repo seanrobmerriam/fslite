@@ -112,8 +112,13 @@ export function ShowcaseExplorer() {
   >("explorer");
   const resetting = state.status?.resetting ?? false;
   const busy = Boolean(state.busyAction);
-  const workspaceUnavailable = !state.status;
-  const mutationDisabled = resetting || busy || workspaceUnavailable;
+  const availability =
+    state.availability ?? (state.status ? "ready" : "checking");
+  const workspaceUnavailable = availability === "unavailable";
+  const mutationDisabled =
+    resetting || busy || workspaceUnavailable || availability === "checking";
+  const dialogBusy =
+    busy || workspaceUnavailable || availability === "checking";
   const selectedDirectory = directoryFor(
     state.selectedPath,
     state.selectedNode?.kind,
@@ -292,10 +297,7 @@ export function ShowcaseExplorer() {
         aria-hidden={modalOpen}
         inert={modalOpen}
       >
-        <WorkspaceStatus
-          status={state.status}
-          unavailable={workspaceUnavailable && Boolean(state.error)}
-        />
+        <WorkspaceStatus status={state.status} availability={availability} />
         <ToastRegion error={state.error} resetting={resetting} />
         {resetting ? (
           <div
@@ -335,7 +337,11 @@ export function ShowcaseExplorer() {
             aria-labelledby="explorer-tab"
           >
             <Toolbar
-              disabled={mutationDisabled}
+              actionsDisabled={mutationDisabled}
+              refreshDisabled={busy || resetting || availability === "checking"}
+              refreshLabel={
+                workspaceUnavailable ? "Retry connection" : "Refresh files"
+              }
               onRefresh={() => void refresh()}
               onNewFile={() => openCreate("file")}
               onNewFolder={() => openCreate("folder")}
@@ -362,7 +368,7 @@ export function ShowcaseExplorer() {
                   <button
                     type="button"
                     className="button button--accent"
-                    disabled={busy || resetting}
+                    disabled={mutationDisabled}
                     onClick={reloadCurrentServerVersion}
                   >
                     Reload server version
@@ -386,6 +392,9 @@ export function ShowcaseExplorer() {
                 binary={state.editor.binary}
                 busy={busy}
                 resetting={resetting}
+                unavailable={
+                  workspaceUnavailable || availability === "checking"
+                }
                 onChange={setEditorText}
                 onSave={save}
                 onDownload={download}
@@ -397,6 +406,7 @@ export function ShowcaseExplorer() {
           <div role="tabpanel" id="search-panel" aria-labelledby="search-tab">
             <SearchPanel
               busy={busy || resetting}
+              unavailable={workspaceUnavailable || availability === "checking"}
               entries={state.tree}
               onSearch={search}
               onSelectPath={selectSearchPath}
@@ -407,6 +417,7 @@ export function ShowcaseExplorer() {
           <div role="tabpanel" id="trash-panel" aria-labelledby="trash-tab">
             <TrashPanel
               busy={busy || resetting}
+              unavailable={workspaceUnavailable || availability === "checking"}
               onList={listTrash}
               onOperation={runOperation}
             />
@@ -416,6 +427,7 @@ export function ShowcaseExplorer() {
           <div role="tabpanel" id="changes-panel" aria-labelledby="changes-tab">
             <ChangesPanel
               generation={state.status?.generation}
+              unavailable={workspaceUnavailable || availability === "checking"}
               onLoad={loadChanges}
             />
           </div>
@@ -426,7 +438,7 @@ export function ShowcaseExplorer() {
         <CreateDialog
           directory={dialog.directory}
           kind={dialog.item}
-          busy={busy}
+          busy={dialogBusy}
           returnFocusTarget={dialog.returnFocusTarget}
           fallbackFocusTarget={explorerRef.current}
           onCreate={(operation) => completeOperation(operation, dialog)}
@@ -436,7 +448,7 @@ export function ShowcaseExplorer() {
       {dialog?.kind === "upload" ? (
         <UploadDialog
           directory={dialog.directory}
-          busy={busy}
+          busy={dialogBusy}
           returnFocusTarget={dialog.returnFocusTarget}
           fallbackFocusTarget={explorerRef.current}
           onUpload={(path, file) => completeUpload(path, file, dialog)}
@@ -447,7 +459,7 @@ export function ShowcaseExplorer() {
         <MoveCopyDialog
           entry={dialog.entry}
           mode={dialog.mode}
-          busy={busy}
+          busy={dialogBusy}
           returnFocusTarget={dialog.returnFocusTarget}
           fallbackFocusTarget={explorerRef.current}
           onSubmit={(operation) => completeOperation(operation, dialog)}
@@ -458,7 +470,7 @@ export function ShowcaseExplorer() {
         <DeleteDialog
           entry={dialog.entry}
           initialMode={dialog.initialMode}
-          busy={busy}
+          busy={dialogBusy}
           returnFocusTarget={dialog.returnFocusTarget}
           fallbackFocusTarget={explorerRef.current}
           onSubmit={(operation) => completeOperation(operation, dialog)}
@@ -472,14 +484,14 @@ export function ShowcaseExplorer() {
           onClose={() => setDraftGuard(undefined)}
           returnFocusTarget={draftGuard.dialog.returnFocusTarget}
           fallbackFocusTarget={explorerRef.current}
-          busy={busy}
-          closeable={!busy}
+          busy={dialogBusy}
+          closeable={!dialogBusy}
         >
           <div className="action-dialog__actions action-dialog__actions--guard">
             <button
               type="button"
               className="button button--quiet"
-              disabled={busy}
+              disabled={dialogBusy}
               onClick={() => setDraftGuard(undefined)}
             >
               Cancel
@@ -487,7 +499,7 @@ export function ShowcaseExplorer() {
             <button
               type="button"
               className="button button--danger"
-              disabled={busy}
+              disabled={dialogBusy}
               onClick={() => void continueDraftGuard()}
             >
               Continue without saving
