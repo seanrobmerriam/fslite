@@ -104,4 +104,66 @@ describe("FileTree", () => {
     await user.keyboard("{Enter}");
     expect(onSelect).toHaveBeenLastCalledWith(entries[0]);
   });
+
+  it("opens a named node action menu, closes it with Escape, and restores menu-button focus", async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn();
+    render(
+      <FileTree
+        entries={entries}
+        selectedPath={undefined}
+        onSelect={vi.fn()}
+        onAction={onAction}
+      />,
+    );
+
+    const actions = screen.getByRole("button", {
+      name: "Actions for todo.txt",
+    });
+    await user.click(actions);
+    expect(
+      screen.getByRole("menu", { name: "Actions for todo.txt" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Move to trash" }));
+    expect(onAction).toHaveBeenCalledWith(entries[2], "trash");
+
+    await user.click(actions);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(actions).toHaveFocus();
+  });
+
+  it("keeps node action menus keyboard navigable and closes them on click-away", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <FileTree
+          entries={entries}
+          selectedPath={undefined}
+          onSelect={vi.fn()}
+          onAction={vi.fn()}
+        />
+        <button type="button">Outside tree</button>
+      </>,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for todo.txt" }),
+    );
+    const rename = screen.getByRole("menuitem", { name: "Rename" });
+    const move = screen.getByRole("menuitem", { name: "Move" });
+    expect(rename).toHaveFocus();
+
+    await user.keyboard("{ArrowDown}");
+    expect(move).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(
+      screen.getByRole("menuitem", { name: "Delete permanently" }),
+    ).toHaveFocus();
+    await user.keyboard("{Home}");
+    expect(rename).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "Outside tree" }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
 });

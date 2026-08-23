@@ -140,6 +140,11 @@ section + section {
 .button--quiet {
   background: #f8fafc;
 }
+.button--danger {
+  border-color: #b42318;
+  background: #b42318;
+  color: #fff;
+}
 .icon-button {
   width: 2.75rem;
   padding: 0;
@@ -198,7 +203,66 @@ section + section {
   cursor: pointer;
 }
 .tree-item:hover,
-.tree-item.is-selected {
+.tree-item[aria-selected="true"] {
+  background: #eaf0ff;
+}
+.tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.tree-row .tree-item {
+  flex: 1;
+  min-width: 0;
+}
+.tree-menu-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-right: 0.35rem;
+}
+.tree-action-trigger {
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 0.2rem;
+  color: var(--text-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+.tree-row:hover .tree-action-trigger,
+.tree-action-trigger:focus-visible,
+.tree-action-trigger[aria-expanded="true"] {
+  color: var(--text-primary);
+  background: #eaf0ff;
+}
+.tree-action-menu {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 0.25rem);
+  right: 0.25rem;
+  display: grid;
+  min-width: 11rem;
+  padding: 0.3rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.2rem;
+  background: #fffefb;
+  box-shadow: 0 0.8rem 1.8rem rgb(15 23 42 / 16%);
+}
+.tree-action-menu button {
+  min-height: 2.25rem;
+  border: 0;
+  padding: 0.35rem 0.5rem;
+  color: var(--text-primary);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tree-action-menu button:hover,
+.tree-action-menu button:focus-visible {
   background: #eaf0ff;
 }
 .tree-glyph {
@@ -294,6 +358,92 @@ section + section {
 .toast--error {
   border-color: #b42318;
   background: #fff3f2;
+}
+.action-dialog-backdrop {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-2);
+  background: rgb(15 23 42 / 46%);
+}
+.action-dialog {
+  width: min(100%, 32rem);
+  max-height: min(42rem, calc(100vh - 2rem));
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-top: 3px solid #315be8;
+  border-radius: 0.3rem;
+  background: #fffefb;
+  box-shadow: 0 1.4rem 3rem rgb(15 23 42 / 26%);
+}
+.action-dialog__header {
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.action-dialog__header h2,
+.action-dialog__header p {
+  margin: 0;
+}
+.action-dialog__header h2 {
+  font-size: 1.1rem;
+}
+.action-dialog__header p,
+.dialog-note,
+.action-dialog small {
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.action-dialog__form {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+.action-dialog__form label,
+.action-dialog__form fieldset {
+  display: grid;
+  gap: 0.4rem;
+}
+.action-dialog__form input:not([type="radio"]) {
+  min-height: 2.7rem;
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.2rem;
+  padding: 0.45rem 0.55rem;
+  color: var(--text-primary);
+  background: #fff;
+  font: inherit;
+}
+.action-dialog__form fieldset {
+  border: 1px solid var(--border-subtle);
+  padding: 0.75rem;
+}
+.action-dialog__form fieldset label {
+  display: flex;
+  align-items: center;
+}
+.action-dialog__form .delete-choice {
+  color: #8a2118;
+  font-weight: 700;
+}
+.dialog-error {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-left: 3px solid #b42318;
+  color: #8a2118;
+  background: #fff3f2;
+}
+.action-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.action-dialog__actions--guard {
+  padding: var(--space-3);
 }
 .sr-only {
   position: absolute;

@@ -63,6 +63,7 @@ export function FileEditor({
           <button
             type="button"
             className="button button--quiet"
+            disabled={mutationDisabled}
             onClick={() => void onDownload(path)}
             title="Download this file"
           >
