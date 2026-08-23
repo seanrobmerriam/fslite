@@ -255,6 +255,60 @@ describe("useShowcase", () => {
     expect(result.current.state.status?.nextResetAt).toBeNull();
   });
 
+  it("publishes reset state without appending a gated reconciliation activity", async () => {
+    const api = apiMock();
+    (api.status as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ready: true,
+      generation: 2,
+      resetting: true,
+      nextResetAt: null,
+      now: 2,
+      usage,
+    });
+    const { result } = renderHook(() => useShowcase(api));
+
+    await waitFor(() =>
+      expect(result.current.state.status?.resetting).toBe(true),
+    );
+    expect(api.operation).not.toHaveBeenCalled();
+    expect(result.current.state.activities).toEqual([]);
+    expect(result.current.state.availability).toBe("ready");
+  });
+
+  it("polls reset status without creating visitor activity", async () => {
+    vi.useFakeTimers();
+    const api = apiMock();
+    (api.status as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ready: true,
+        generation: 1,
+        resetting: false,
+        nextResetAt: 100,
+        now: 1,
+        usage,
+      })
+      .mockResolvedValueOnce({
+        ready: true,
+        generation: 1,
+        resetting: true,
+        nextResetAt: null,
+        now: 2,
+        usage,
+      });
+    const { result, unmount } = renderHook(() => useShowcase(api));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(result.current.state.status?.resetting).toBe(true);
+    expect(result.current.state.activities).toEqual([activity]);
+    unmount();
+  });
+
   it("loads status and tree once, then polls the tree without appending background activity", async () => {
     vi.useFakeTimers();
     const api = apiMock();

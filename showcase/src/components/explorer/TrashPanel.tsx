@@ -65,7 +65,10 @@ export function TrashPanel({
       });
       setRestore(undefined);
       setDestination("");
-      await refresh();
+      // The mutation already reconciles the filesystem tree. Remove this
+      // known item locally instead of turning one restore click into a second
+      // visitor-visible list request.
+      setItems((current) => current?.filter((item) => item.id !== restore.id));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Restore failed.");
     }
@@ -80,7 +83,7 @@ export function TrashPanel({
       });
       setPurge(undefined);
       setConfirmation("");
-      await refresh();
+      setItems((current) => current?.filter((item) => item.id !== purge.id));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Purge failed.");
     }

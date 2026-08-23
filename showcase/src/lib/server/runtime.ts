@@ -85,9 +85,10 @@ class ProcessShowcaseRuntime implements ShowcaseRuntime {
   }
 
   async status(): Promise<ShowcaseRuntimeStatus> {
-    const usage = await this.coordinator.withOperation(() =>
-      this.client.usage(),
-    );
+    // Status is observational and must remain available while the coordinator
+    // closes the mutation gate, otherwise the browser cannot render its reset
+    // banner or disable controls deterministically.
+    const usage = await this.client.usage();
     return {
       ready: true,
       workspaceId: this.workspaceId,

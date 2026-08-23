@@ -18,6 +18,7 @@ import {
 } from "./reducer";
 
 const BACKGROUND_REFRESH_MS = 10_000;
+const STATUS_POLL_MS = 500;
 
 interface ShowcaseApiLike {
   status(signal?: AbortSignal): ReturnType<ShowcaseApi["status"]>;
@@ -129,12 +130,19 @@ export function useShowcase(api?: ShowcaseApiLike) {
       try {
         const status = await apiRef.current.status(controller.signal);
         if (!current()) return [];
+        // Publish reset state before asking for the gated tree. This keeps the
+        // reset banner and disabled controls observable while the gateway is
+        // deliberately rejecting all new work.
+        dispatch({ type: "status_loaded", status });
+        if (status.resetting) {
+          dispatch({ type: "availability_changed", availability: "ready" });
+          return [];
+        }
         const tree = await apiRef.current.operation<{ items: TreeEntry[] }>(
           { kind: "tree", path: "/" as VirtualPath },
           controller.signal,
         );
         if (!current()) return [];
-        dispatch({ type: "status_loaded", status });
         dispatch({
           type: "tree_loaded",
           entries: tree.data.items ?? [],
@@ -195,6 +203,27 @@ export function useShowcase(api?: ShowcaseApiLike) {
     };
   }, [refresh]);
 
+  useEffect(() => {
+    let active = true;
+    const pollStatus = async () => {
+      try {
+        const status = await apiRef.current.status();
+        if (active) dispatch({ type: "status_loaded", status });
+      } catch {
+        // Refresh owns user-facing availability errors; status polling merely
+        // keeps reset controls in sync without creating visitor activity.
+      }
+    };
+    const timer = globalThis.setInterval(
+      () => void pollStatus(),
+      STATUS_POLL_MS,
+    );
+    return () => {
+      active = false;
+      globalThis.clearInterval(timer);
+    };
+  }, []);
+
   const runMutation = useCallback(
     async <T>(
       busyAction: string,
@@ -231,7 +260,8 @@ export function useShowcase(api?: ShowcaseApiLike) {
           type: "activity_appended",
           activity: result.activity,
         });
-        await refresh(false);
+        // The follow-up tree load is internal reconciliation, not visitor activity.
+        await refresh(true);
         return result;
       } catch (error) {
         if (error instanceof ShowcaseError && error.activity) {

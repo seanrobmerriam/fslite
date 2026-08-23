@@ -179,12 +179,12 @@ describe("server HTTP helpers", () => {
       ),
     );
 
-    expect(response.status).toBe(412);
+    expect(response.status).toBe(409);
     await expect(response.json()).resolves.toEqual({
       error: {
         code: "revision_conflict",
         message: "The file changed before the operation completed.",
-        status: 412,
+        status: 409,
         requestId: "upstream-123",
       },
     });

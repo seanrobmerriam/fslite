@@ -220,10 +220,17 @@ export function gatewayErrorResponse(
     message = "The shared workspace is resetting; try again shortly.";
     retryAfterMs = Math.max(0, Math.ceil(error.retryAfterMs));
   } else if (error instanceof UpstreamApiError) {
-    activity = error.activity;
+    // fslite's wire contract uses 412, while the public editor contract uses
+    // the conventional 409 conflict response. Keep the activity aligned with
+    // what the visitor actually receives.
+    const revisionConflict = error.code === "revision_conflict";
+    activity =
+      error.activity && revisionConflict
+        ? { ...error.activity, status: 409 }
+        : error.activity;
     responseRequestId = safeRequestId(error.requestId);
     if (error.status >= 400 && error.status < 500) {
-      status = error.status;
+      status = revisionConflict ? 409 : error.status;
       code = publicCode(error.code);
       message =
         UPSTREAM_PUBLIC_MESSAGES[code] ??

@@ -27,7 +27,7 @@ const item = {
 } satisfies TrashEntry;
 
 describe("TrashPanel", () => {
-  it("lists trash, restores to an optional canonical destination, and refreshes once", async () => {
+  it("removes a restored item locally without a second visitor list request", async () => {
     const user = userEvent.setup();
     const onList = vi.fn().mockResolvedValue({ items: [item] });
     const onOperation = vi.fn().mockResolvedValue(undefined);
@@ -48,7 +48,8 @@ describe("TrashPanel", () => {
       trashId: item.id,
       destination: "/restored/readme.txt" as VirtualPath,
     });
-    expect(onList).toHaveBeenCalledTimes(2);
+    expect(onList).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("/docs/readme.txt")).not.toBeInTheDocument();
   });
 
   it("requires the exact live name before purging", async () => {
@@ -74,5 +75,6 @@ describe("TrashPanel", () => {
       trashId: item.id,
       confirmedName: "readme.txt",
     });
+    expect(screen.queryByText("/docs/readme.txt")).not.toBeInTheDocument();
   });
 });

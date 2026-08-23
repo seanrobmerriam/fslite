@@ -175,7 +175,8 @@ describe("getShowcaseRuntime", () => {
     );
     expect(client.readFile).not.toHaveBeenCalled();
     expect(client.usage).toHaveBeenCalledTimes(1);
-    expect(coordinator.withOperation).toHaveBeenCalledTimes(4);
+    // Status remains observable while the reset gate rejects visitor work.
+    expect(coordinator.withOperation).toHaveBeenCalledTimes(3);
     expect("resetNow" in runtime).toBe(false);
   });
 });
