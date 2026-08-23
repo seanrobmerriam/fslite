@@ -520,8 +520,8 @@ export class ShowcaseApi {
         throw error;
       }
       throw new ShowcaseError(
-        "network_error",
-        "The showcase gateway is unavailable.",
+        "upstream_unavailable",
+        "The filesystem service is unavailable.",
         502,
       );
     }

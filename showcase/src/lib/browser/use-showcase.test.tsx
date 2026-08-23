@@ -88,7 +88,7 @@ afterEach(() => {
 });
 
 describe("useShowcase", () => {
-  it("transitions from ready to unavailable on refresh failure and recovers on retry", async () => {
+  it("transitions from ready to unavailable on a deferred upstream refresh failure and recovers on retry", async () => {
     const api = apiMock();
     const { result } = renderHook(() => useShowcase(api));
 
@@ -98,16 +98,24 @@ describe("useShowcase", () => {
       ).toBe("ready"),
     );
     const priorStatus = result.current.state.status;
-    (api.status as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+    const outage = deferred<typeof priorStatus>();
+    (api.status as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      outage.promise,
+    );
+
+    let refresh!: Promise<readonly TreeEntry[]>;
+    act(() => {
+      refresh = result.current.refresh(false);
+    });
+    outage.reject(
       new ShowcaseError(
         "upstream_unavailable",
         "The filesystem service is unavailable.",
-        503,
+        502,
       ),
     );
-
     await act(async () => {
-      await result.current.refresh(false);
+      await refresh;
     });
 
     expect(
@@ -124,6 +132,60 @@ describe("useShowcase", () => {
       (result.current.state as { availability?: string }).availability,
     ).toBe("ready");
     expect(result.current.state.error).toBeUndefined();
+  });
+
+  it("keeps a ready browser state for deferred non-connectivity refresh errors", async () => {
+    const api = apiMock();
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() =>
+      expect(result.current.state.availability).toBe("ready"),
+    );
+
+    for (const [code, status] of [
+      ["rate_limited", 429],
+      ["workspace_resetting", 503],
+      ["invalid_response", 502],
+    ] as const) {
+      const failure = deferred<typeof usage>();
+      (api.status as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+        failure.promise,
+      );
+      let refresh!: Promise<readonly TreeEntry[]>;
+      act(() => {
+        refresh = result.current.refresh(false);
+      });
+      failure.reject(new ShowcaseError(code, code, status));
+      await act(async () => {
+        await refresh;
+      });
+
+      expect(result.current.state.availability).toBe("ready");
+      expect(result.current.state.error).toMatchObject({ code });
+    }
+  });
+
+  it("keeps initial contract failures checking while surfacing their public error", async () => {
+    const api = apiMock();
+    const contractFailure = deferred<typeof usage>();
+    (api.status as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      contractFailure.promise,
+    );
+    const { result } = renderHook(() => useShowcase(api));
+
+    contractFailure.reject(
+      new ShowcaseError(
+        "invalid_response",
+        "Invalid response from server.",
+        502,
+      ),
+    );
+    await waitFor(() => expect(result.current.state.error).toBeDefined());
+
+    expect(result.current.state.status).toBeUndefined();
+    expect(result.current.state.availability).toBe("checking");
+    expect(result.current.state.error).toMatchObject({
+      code: "invalid_response",
+    });
   });
 
   it("marks a tree refresh unavailable while preserving the last complete status", async () => {

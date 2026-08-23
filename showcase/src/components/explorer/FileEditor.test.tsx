@@ -50,7 +50,10 @@ describe("FileEditor", () => {
     expect(onChange).toHaveBeenCalled();
   });
 
-  it("keeps a resetting dirty draft visible while saving stays disabled", () => {
+  it("keeps a resetting dirty draft locally editable while server actions stay disabled", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const onSave = vi.fn();
     render(
       <FileEditor
         node={textNode}
@@ -59,16 +62,23 @@ describe("FileEditor", () => {
         dirty
         busy={false}
         resetting
-        onChange={vi.fn()}
-        onSave={vi.fn()}
+        onChange={onChange}
+        onSave={onSave}
         onDownload={vi.fn()}
       />,
     );
 
-    expect(screen.getByRole("textbox", { name: "File contents" })).toHaveValue(
-      "local draft",
-    );
+    const editor = screen.getByRole("textbox", { name: "File contents" });
+    expect(editor).toHaveValue("local draft");
+    expect(editor).toBeEnabled();
     expect(screen.getByRole("button", { name: "Save file" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Download file" }),
+    ).toBeDisabled();
+    await user.type(editor, "!");
+    expect(onChange).toHaveBeenCalledWith("local draft!");
+    await user.keyboard("{Control>}s{/Control}");
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it("edits dirty text and saves from the button or Ctrl/Cmd+S", async () => {

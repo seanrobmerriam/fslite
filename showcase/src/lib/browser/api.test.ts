@@ -102,19 +102,30 @@ describe("ShowcaseApi", () => {
     );
   });
 
-  it("turns a gateway network failure into a typed error", async () => {
+  it("normalizes a browser network failure into a sanitized availability error", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
-      .mockRejectedValue(new TypeError("network down"));
+      .mockRejectedValue(
+        new TypeError("request to https://private.example/token failed"),
+      );
     const api = new ShowcaseApi({ fetch });
 
     await expect(api.operation({ kind: "usage" })).rejects.toEqual(
       expect.objectContaining<Partial<ShowcaseError>>({
         name: "ShowcaseError",
-        code: "network_error",
+        code: "upstream_unavailable",
         status: 502,
+        message: "The filesystem service is unavailable.",
       }),
     );
+
+    try {
+      await api.operation({ kind: "usage" });
+    } catch (error) {
+      expect(error).not.toHaveProperty("cause");
+      expect(String(error)).not.toContain("private.example");
+      expect(String(error)).not.toContain("token");
+    }
   });
 
   it("rejects an oversized upload before making a request", async () => {

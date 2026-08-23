@@ -42,10 +42,9 @@ function isRevisionConflict(
 }
 
 function isAvailabilityFailure(error: unknown): boolean {
-  if (error instanceof ShowcaseError) {
-    return error.code === "upstream_unavailable";
-  }
-  return error instanceof TypeError;
+  return (
+    error instanceof ShowcaseError && error.code === "upstream_unavailable"
+  );
 }
 
 function decodeText(data: unknown): string {
@@ -155,10 +154,12 @@ export function useShowcase(api?: ShowcaseApiLike) {
           if (!background && error instanceof ShowcaseError && error.activity) {
             dispatch({ type: "activity_appended", activity: error.activity });
           }
-          dispatch({
-            type: "availability_changed",
-            availability: "unavailable",
-          });
+          if (isAvailabilityFailure(error)) {
+            dispatch({
+              type: "availability_changed",
+              availability: "unavailable",
+            });
+          }
           dispatch({ type: "error_set", error: error as Error });
         }
         return [];

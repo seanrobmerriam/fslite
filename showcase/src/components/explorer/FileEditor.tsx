@@ -97,7 +97,7 @@ export function FileEditor({
           <textarea
             aria-label="File contents"
             value={text}
-            disabled={busy || resetting}
+            disabled={busy}
             spellCheck={false}
             onChange={(event) => onChange(event.target.value)}
             onKeyDown={saveWithKeyboard}
