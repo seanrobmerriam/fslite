@@ -57,3 +57,51 @@ git diff --check
 - The existing untracked `.DS_Store` and `showcase/.DS_Store` files are
   preserved and deliberately excluded.
 - No publish, deploy, reset invocation, or unrelated changes were made.
+
+## Review follow-up (2026-08-22)
+
+### RED / GREEN evidence
+
+- **RED:** Typed non-2xx and network failures had no activity record; browser
+  errors could therefore not retain failed visitor traffic. Visitor reads and
+  mutations could overlap in one direction, and a received activity curl could
+  still influence displayed output. The prior download assertion also showed
+  `/api/download` instead of the route-provided upstream path.
+- **GREEN:** Every fslite-client failure class now carries a bounded/redacted
+  `ActivityRecord` built from its fixed method/path/request summary. The safe
+  public error envelope and strict browser error parser carry that optional
+  record; hooks append it exactly once for failed visitor reads, mutations,
+  uploads, downloads, and selected-file reads. Background polling remains
+  excluded. Gateway validation, rate limit, and reset-gate rejections are
+  explicitly documented as activity-free because no upstream request occurred.
+- **GREEN:** Visitor read/mutation ownership is now symmetric and controller
+  owned: each rejects the other while active and only the current owner clears
+  the busy state. Deferred overlap coverage exercises both directions.
+- **GREEN:** Download activity validates and uses `X-Fslite-Path`, falling back
+  to the canonical requested path when the header is absent/malformed. The
+  activity UI recursively redacts sensitive keys and bearer-like scalar values,
+  and reconstructs curl exclusively from validated method/path with the two
+  placeholders; received curl strings and extra headers are ignored.
+- **GREEN:** Glob validation is a shared pure validator used by both the Zod
+  gateway schema and SearchPanel. It rejects relative, overlength,
+  control/DEL, traversal, duplicate, and trailing segments before requests.
+  Tab tests cover ArrowLeft, ArrowUp, Enter, and Space in addition to the
+  original automatic activation keys.
+
+### Verification
+
+```text
+PATH=/Users/sean/.nvm/versions/node/v24.14.1/bin:$PATH corepack pnpm --dir showcase test
+# 30 files, 271 tests passed
+
+PATH=/Users/sean/.nvm/versions/node/v24.14.1/bin:$PATH corepack pnpm --dir showcase check
+# Astro diagnostics: 0 errors, 0 warnings, 0 hints; ESLint and Prettier clean
+
+PATH=/Users/sean/.nvm/versions/node/v24.14.1/bin:$PATH corepack pnpm --dir showcase build
+# Astro SSR build completed
+```
+
+The fresh built-client scan found no `fslite-server`, `fslite-client`, real
+bearer credentials, `Cookie`, `X-Secret`, or lifecycle calls. It contains only
+`$FSLITE_TOKEN` and `$FSLITE_SERVER_URL` placeholders. The existing untracked
+`.DS_Store` files remain preserved and excluded.

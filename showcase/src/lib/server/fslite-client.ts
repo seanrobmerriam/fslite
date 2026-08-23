@@ -58,6 +58,7 @@ export class UpstreamApiError extends Error {
     message: string,
     readonly details: JsonValue | null,
     readonly requestId: string,
+    readonly activity?: ActivityRecord,
   ) {
     super(message);
   }
@@ -66,7 +67,10 @@ export class UpstreamApiError extends Error {
 export class UpstreamResponseTooLargeError extends Error {
   readonly name = "UpstreamResponseTooLargeError";
 
-  constructor(readonly limitBytes: number) {
+  constructor(
+    readonly limitBytes: number,
+    readonly activity?: ActivityRecord,
+  ) {
     super("Upstream response exceeded the showcase response limit");
   }
 }
@@ -74,7 +78,10 @@ export class UpstreamResponseTooLargeError extends Error {
 export class UpstreamRequestError extends Error {
   readonly name = "UpstreamRequestError";
 
-  constructor(readonly requestId: string) {
+  constructor(
+    readonly requestId: string,
+    readonly activity?: ActivityRecord,
+  ) {
     super("The upstream filesystem service is unavailable");
   }
 }
@@ -219,6 +226,26 @@ export class FsliteClient {
     );
   }
 
+  private failureActivity(
+    options: RequestOptions,
+    status: number,
+    durationMs: number,
+    requestId: string,
+    response?: unknown,
+  ): ActivityRecord {
+    return buildActivity({
+      token: this.config.token,
+      serverUrl: this.config.serverUrl.toString(),
+      method: options.method,
+      path: options.path,
+      status,
+      durationMs,
+      request: options.activityRequest,
+      response,
+      requestId: redactActivityText(requestId, this.config.token),
+    });
+  }
+
   private async request<T>(
     options: RequestOptions,
   ): Promise<UpstreamResult<T>> {
@@ -237,6 +264,7 @@ export class FsliteClient {
     }
 
     const startedAt = this.now();
+    let observedResponse: Response | undefined;
     try {
       const response = await this.fetchImpl(this.route(options.path), {
         method: options.method,
@@ -244,6 +272,7 @@ export class FsliteClient {
         body: options.body,
         signal: controller.signal,
       });
+      observedResponse = response;
       if (!response.ok) {
         return await this.errorFrom(response, visitorRequestId);
       }
@@ -279,14 +308,44 @@ export class FsliteClient {
         ? { data, activity, contentType }
         : { data, activity };
     } catch (error) {
-      if (
-        error instanceof UpstreamApiError ||
+      const durationMs = this.now() - startedAt;
+      const observedStatus = observedResponse?.status;
+      const status =
+        observedStatus && observedStatus >= 100 && observedStatus <= 599
+          ? observedStatus
+          : controller.signal.aborted ||
+              (error instanceof DOMException && error.name === "AbortError")
+            ? 504
+            : 502;
+      const observedRequestId =
+        observedResponse?.headers.get("x-request-id") || visitorRequestId;
+      if (error instanceof UpstreamApiError) {
+        throw new UpstreamApiError(
+          error.status,
+          error.code,
+          error.message,
+          error.details,
+          error.requestId,
+          this.failureActivity(options, status, durationMs, error.requestId, {
+            error: { code: error.code, details: error.details },
+          }),
+        );
+      }
+      const activity = this.failureActivity(
+        options,
+        status,
+        durationMs,
+        observedRequestId,
         error instanceof UpstreamResponseTooLargeError
-      ) {
-        throw error;
+          ? { truncated: true, limitBytes: error.limitBytes }
+          : { error: "upstream response unavailable" },
+      );
+      if (error instanceof UpstreamResponseTooLargeError) {
+        throw new UpstreamResponseTooLargeError(error.limitBytes, activity);
       }
       throw new UpstreamRequestError(
         redactActivityText(visitorRequestId, this.config.token),
+        activity,
       );
     } finally {
       clearTimeout(timeout);

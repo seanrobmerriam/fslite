@@ -127,6 +127,26 @@ describe("ShowcaseExplorer", () => {
     );
     await user.keyboard("{Home}");
     expect(explorer).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("tab", { name: "Changes" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.keyboard("{ArrowUp}");
+    expect(screen.getByRole("tab", { name: "Trash" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("tab", { name: "Trash" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await user.keyboard(" ");
+    expect(screen.getByRole("tab", { name: "Trash" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("opens a labelled create dialog at the selected directory, isolates the background, and sends its exact mutation", async () => {

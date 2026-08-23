@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TreeEntry } from "../shared/contracts";
 import type { VirtualPath } from "../shared/path";
-import type { ShowcaseApi } from "./api";
+import { ShowcaseError, type ShowcaseApi } from "./api";
 import { useShowcase } from "./use-showcase";
 
 const activity = {
@@ -181,6 +181,82 @@ describe("useShowcase", () => {
       "a",
       "find",
     ]);
+  });
+
+  it("appends failed visitor activity exactly once without retrying", async () => {
+    const api = apiMock();
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(api.operation).toHaveBeenCalledTimes(1));
+    (api.operation as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new ShowcaseError(
+        "upstream_unavailable",
+        "The filesystem service is unavailable.",
+        502,
+        "request-failed",
+        undefined,
+        { ...activity, id: "failed", status: 502 },
+      ),
+    );
+    await act(async () => {
+      await expect(
+        result.current.runReadOperation({ kind: "usage" }),
+      ).rejects.toMatchObject({ code: "upstream_unavailable" });
+    });
+    expect(result.current.state.activities.map((item) => item.id)).toEqual([
+      "a",
+      "failed",
+    ]);
+    expect(api.operation).toHaveBeenCalledTimes(2);
+  });
+
+  it("atomically rejects a mutation while a visitor read owns the workbench", async () => {
+    const api = apiMock();
+    const pending = deferred<{ data: unknown; activity: typeof activity }>();
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation) => {
+        if (operation.kind === "tree")
+          return Promise.resolve({ data: tree, activity });
+        return pending.promise;
+      },
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    let read!: Promise<unknown>;
+    act(() => {
+      read = result.current.runReadOperation({ kind: "usage" });
+    });
+    await expect(
+      result.current.runOperation({ kind: "usage" }),
+    ).rejects.toMatchObject({ code: "operation_in_progress" });
+    await act(async () => {
+      pending.resolve({ data: {}, activity });
+      await read;
+    });
+  });
+
+  it("atomically rejects a visitor read while a mutation owns the workbench", async () => {
+    const api = apiMock();
+    const pending = deferred<{ data: unknown; activity: typeof activity }>();
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation) => {
+        if (operation.kind === "tree")
+          return Promise.resolve({ data: tree, activity });
+        return pending.promise;
+      },
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+    let mutation!: Promise<unknown>;
+    act(() => {
+      mutation = result.current.runOperation({ kind: "usage" });
+    });
+    await expect(
+      result.current.runReadOperation({ kind: "usage" }),
+    ).rejects.toMatchObject({ code: "operation_in_progress" });
+    await act(async () => {
+      pending.resolve({ data: {}, activity });
+      await mutation;
+    });
   });
 
   it("normalizes a download failure into application error state without activity or rejection", async () => {

@@ -2,7 +2,11 @@ import { useState } from "react";
 
 import type { PublicOperation } from "../../lib/server/schemas";
 import type { TreeEntry } from "../../lib/shared/contracts";
-import { validateVirtualPath, type VirtualPath } from "../../lib/shared/path";
+import {
+  validateGlobPattern,
+  validateVirtualPath,
+  type VirtualPath,
+} from "../../lib/shared/path";
 
 type SearchMode = "filename" | "glob" | "contents";
 
@@ -32,19 +36,6 @@ function itemPath(
   return entries.find((entry) => entry.node.id === id)?.path;
 }
 
-function validateGlob(pattern: string): string | undefined {
-  if (!pattern.startsWith("/")) return "Glob patterns must be absolute.";
-  if (
-    pattern
-      .split("/")
-      .slice(1)
-      .some((part) => part === "." || part === ".." || part === "")
-  ) {
-    return "Glob patterns must use canonical path segments.";
-  }
-  return undefined;
-}
-
 /** Fixed, validated discovery requests; results can reopen a matching tree item. */
 export function SearchPanel({
   busy = false,
@@ -61,16 +52,19 @@ export function SearchPanel({
 
   const submit = async (event: { preventDefault(): void }) => {
     event.preventDefault();
-    const query = text.trim();
+    const query = mode === "glob" ? text : text.trim();
     if (!query) {
       setError("Enter search text.");
       return;
     }
     let operation: PublicOperation;
     if (mode === "glob") {
-      const globError = validateGlob(query);
-      if (globError) {
-        setError(globError);
+      try {
+        validateGlobPattern(query);
+      } catch (error) {
+        setError(
+          error instanceof Error ? error.message : "Invalid glob pattern.",
+        );
         return;
       }
       operation = { kind: "glob", pattern: query };

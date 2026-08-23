@@ -67,4 +67,18 @@ describe("SearchPanel", () => {
     expect(onSearch).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/canonical/i);
   });
+
+  it("rejects gateway-invalid glob controls and traversal before requesting", async () => {
+    const user = userEvent.setup();
+    const onSearch = vi.fn();
+    render(<SearchPanel onSearch={onSearch} onSelectPath={vi.fn()} />);
+    await user.click(screen.getByRole("radio", { name: "Glob" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Search text" }),
+      "/docs/../secret\n",
+    );
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    expect(onSearch).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/canonical|control/i);
+  });
 });

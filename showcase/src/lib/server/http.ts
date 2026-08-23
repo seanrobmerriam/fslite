@@ -1,6 +1,7 @@
 import { isIP } from "node:net";
 import { ZodError } from "zod";
 
+import type { ActivityRecord } from "../shared/contracts";
 import { validateVirtualPath, type VirtualPath } from "../shared/path";
 import {
   GatewayPurgeConfirmationError,
@@ -22,6 +23,7 @@ export interface PublicError {
     status: number;
     requestId?: string;
     retryAfterMs?: number;
+    activity?: ActivityRecord;
   };
 }
 
@@ -178,7 +180,12 @@ export function clientIp(
     : directAddress;
 }
 
-/** Maps only known failures into a browser-safe error envelope. */
+/**
+ * Maps only known failures into a browser-safe error envelope. `activity` is
+ * included solely when fslite was actually contacted; validation, rate-limit,
+ * and reset-gate rejections deliberately have none because no upstream
+ * request occurred.
+ */
 export function gatewayErrorResponse(
   error: unknown,
   fallbackRequestId?: string,
@@ -188,6 +195,7 @@ export function gatewayErrorResponse(
   let message = "The filesystem service is unavailable.";
   let retryAfterMs: number | undefined;
   let responseRequestId = safeRequestId(fallbackRequestId);
+  let activity: ActivityRecord | undefined;
 
   if (error instanceof PublicRequestError) {
     status = error.status;
@@ -212,6 +220,7 @@ export function gatewayErrorResponse(
     message = "The shared workspace is resetting; try again shortly.";
     retryAfterMs = Math.max(0, Math.ceil(error.retryAfterMs));
   } else if (error instanceof UpstreamApiError) {
+    activity = error.activity;
     responseRequestId = safeRequestId(error.requestId);
     if (error.status >= 400 && error.status < 500) {
       status = error.status;
@@ -225,6 +234,11 @@ export function gatewayErrorResponse(
     error instanceof UpstreamResponseTooLargeError ||
     error instanceof ResponseTooLargeError
   ) {
+    activity =
+      error instanceof UpstreamRequestError ||
+      error instanceof UpstreamResponseTooLargeError
+        ? error.activity
+        : undefined;
     code =
       error instanceof UpstreamResponseTooLargeError ||
       error instanceof ResponseTooLargeError
@@ -239,6 +253,7 @@ export function gatewayErrorResponse(
       status,
       requestId: responseRequestId,
       ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+      ...(activity === undefined ? {} : { activity }),
     },
   };
   const headers = new Headers({ "x-request-id": responseRequestId });

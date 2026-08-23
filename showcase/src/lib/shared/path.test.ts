@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeVirtualPath, validateVirtualPath } from "./path";
+import {
+  encodeVirtualPath,
+  validateGlobPattern,
+  validateVirtualPath,
+} from "./path";
 
 describe("virtual paths", () => {
   it("accepts root and nested Unicode names", () => {
@@ -20,5 +24,18 @@ describe("virtual paths", () => {
     (path) => {
       expect(() => validateVirtualPath(path)).toThrow();
     },
+  );
+
+  it.each([
+    "relative",
+    "/a//b",
+    "/a/../b",
+    "/a/./b",
+    "/a/",
+    "/a\u007fb",
+    "/a\nb",
+    "/".padEnd(1026, "a"),
+  ])("rejects non-canonical glob %j", (glob) =>
+    expect(() => validateGlobPattern(glob)).toThrow(),
   );
 });

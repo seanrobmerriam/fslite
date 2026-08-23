@@ -193,7 +193,7 @@ describe("ShowcaseApi", () => {
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:download-1");
   });
 
-  it("derives a bounded local activity without trusting upstream path or control headers", async () => {
+  it("uses the validated route-provided upstream path for download activity", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
       .mockResolvedValue(
@@ -215,12 +215,11 @@ describe("ShowcaseApi", () => {
 
     expect(result.activity).toMatchObject({
       method: "GET",
-      path: "/api/download",
+      path: "/v1/workspaces/private/content/report.txt",
       status: 200,
       durationMs: 12,
       requestId: "request-1",
     });
-    expect(JSON.stringify(result.activity)).not.toContain("workspaces");
   });
 
   it("removes every C0 control and DEL from local download activity headers", async () => {
@@ -253,6 +252,7 @@ describe("ShowcaseApi", () => {
     const result = await api.download("/docs/report.txt" as never);
 
     expect(result.activity.requestId).toBe("request___end");
+    expect(result.activity.path).toBe("/docs/report.txt");
     expect(
       [...result.activity.requestId].some((character) => {
         const code = character.codePointAt(0) ?? 0;

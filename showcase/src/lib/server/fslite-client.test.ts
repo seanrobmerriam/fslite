@@ -320,6 +320,28 @@ describe("FsliteClient route contracts", () => {
       requestId: "upstream-request",
       message: expect.not.stringContaining("super-secret"),
       details: { revision: 4, token: "[REDACTED]" },
+      activity: expect.objectContaining({
+        method: "GET",
+        path: "/v1/workspaces/ws/fs/a.txt",
+        status: 412,
+        requestId: "upstream-request",
+      }),
+    });
+  });
+
+  it("attaches a sanitized activity to unavailable upstream failures", async () => {
+    installFetch(
+      Promise.reject(new TypeError("network super-secret")) as never,
+    );
+
+    await expect(client().usage()).rejects.toMatchObject({
+      name: "UpstreamRequestError",
+      activity: expect.objectContaining({
+        method: "GET",
+        path: "/v1/workspaces/ws/usage",
+        status: 502,
+        requestId: "visitor-request",
+      }),
     });
   });
 

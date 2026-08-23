@@ -10,7 +10,12 @@ export interface ApiActivityProps {
 
 const privateKey =
   /authorization|bearer|token|server|upstream|internal|headers?/i;
+const privateScalar =
+  /(?:bearer|basic)\s+\S+|(?:authorization|cookie|token|secret)\s*[:=]|https?:\/\//i;
 function sanitize(value: JsonValue | null): JsonValue | null {
+  if (typeof value === "string") {
+    return privateScalar.test(value) ? "[REDACTED]" : value;
+  }
   if (Array.isArray(value)) return value.map(sanitize);
   if (value && typeof value === "object") {
     return Object.fromEntries(
@@ -21,18 +26,19 @@ function sanitize(value: JsonValue | null): JsonValue | null {
   }
   return value;
 }
-function sanitizeCurl(curl: string): string {
-  return curl
-    .replace(
-      /-H\s+['"]authorization\s*:\s*bearer\s+[^\s'"]+['"]/gi,
-      "-H 'Authorization: Bearer $FSLITE_TOKEN'",
-    )
-    .replace(/Bearer\s+[^\s'"\\]+/gi, "Bearer $FSLITE_TOKEN")
-    .replace(/https?:\/\/[^\s'"\\]+/gi, "$FSLITE_SERVER_URL")
-    .replace(
-      /-H\s+['"]\s*(?!authorization\s*:)[^'"]*(?:token|server|upstream|internal)[^'"]*['"]\s*/gi,
-      "",
-    );
+function curlFor(activity: ActivityRecord): string {
+  const method = ["GET", "POST", "PUT", "DELETE"].includes(activity.method)
+    ? activity.method
+    : "GET";
+  const path =
+    activity.path.startsWith("/") &&
+    ![...activity.path].some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code < 0x20 || code === 0x7f;
+    })
+      ? activity.path
+      : "/";
+  return `curl -X ${method} -H 'Authorization: Bearer $FSLITE_TOKEN' '$FSLITE_SERVER_URL${path.replaceAll("'", "'%27")}'`;
 }
 function bounded(value: JsonValue | null): boolean {
   if (Array.isArray(value)) return value.some(bounded);
@@ -47,9 +53,9 @@ function bounded(value: JsonValue | null): boolean {
 export function ApiActivity({ activities, onClear }: ApiActivityProps) {
   const [message, setMessage] = useState("");
   const visibleActivities = activities.slice(-MAX_ACTIVITY_RECORDS);
-  const copy = async (curl: string) => {
+  const copy = async (activity: ActivityRecord) => {
     try {
-      await globalThis.navigator.clipboard.writeText(sanitizeCurl(curl));
+      await globalThis.navigator.clipboard.writeText(curlFor(activity));
       setMessage("Sanitized curl copied.");
     } catch {
       setMessage("Could not copy sanitized curl.");
@@ -109,11 +115,11 @@ export function ApiActivity({ activities, onClear }: ApiActivityProps) {
                 <button
                   type="button"
                   className="button button--quiet"
-                  onClick={() => void copy(activity.curl)}
+                  onClick={() => void copy(activity)}
                 >
                   Copy curl
                 </button>
-                <pre>{sanitizeCurl(activity.curl)}</pre>
+                <pre>{curlFor(activity)}</pre>
               </details>
             </li>
           ))}

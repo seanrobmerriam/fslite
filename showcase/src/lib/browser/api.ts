@@ -16,6 +16,7 @@ export interface PublicErrorEnvelope {
     status: number;
     requestId?: string;
     retryAfterMs?: number;
+    activity?: ActivityRecord;
   };
 }
 
@@ -37,6 +38,7 @@ export class ShowcaseError extends Error {
     readonly status: number,
     readonly requestId?: string,
     readonly retryAfterMs?: number,
+    readonly activity?: ActivityRecord,
   ) {
     super(message);
   }
@@ -168,6 +170,7 @@ const errorSchema = z
         status: publicStatus,
         requestId: requestId.optional(),
         retryAfterMs: nonNegativeInteger.optional(),
+        activity: z.lazy(() => activitySchema).optional(),
       })
       .strict(),
   })
@@ -274,6 +277,7 @@ function errorFromEnvelope(
     error.status,
     error.requestId,
     error.retryAfterMs,
+    error.activity,
   );
 }
 
@@ -350,6 +354,15 @@ function safeNumber(value: string | null, fallback: number): number {
     : fallback;
 }
 
+function safeActivityPath(value: string | null, fallback: VirtualPath): string {
+  return value &&
+    value.startsWith("/") &&
+    value.length <= 4_096 &&
+    !hasControlCharacter(value)
+    ? value
+    : fallback;
+}
+
 function downloadFilename(path: VirtualPath): string {
   const basename = path.split("/").at(-1) || "download";
   return basename.replace(/[^\x20-\x7e]|[\\/"\r\n\0]/g, "_") || "download";
@@ -365,8 +378,7 @@ function localDownloadActivity(
     id: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
     method: safeMethod(response.headers.get("x-fslite-method")),
-    // Do not expose the upstream activity path; it can contain server topology.
-    path: "/api/download",
+    path: safeActivityPath(response.headers.get("x-fslite-path"), path),
     status: safeNumber(
       response.headers.get("x-fslite-status"),
       response.status,
@@ -375,7 +387,7 @@ function localDownloadActivity(
     requestId,
     request: { path } as unknown as JsonValue,
     response: { binary: true, bytes: blob.size },
-    curl: `curl -X GET '/api/download?path=${encodeURIComponent(path)}'`,
+    curl: `curl -X GET -H 'Authorization: Bearer $FSLITE_TOKEN' '$FSLITE_SERVER_URL${safeActivityPath(response.headers.get("x-fslite-path"), path).replaceAll("'", "'%27")}'`,
   };
 }
 

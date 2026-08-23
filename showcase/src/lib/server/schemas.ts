@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { validateVirtualPath, type VirtualPath } from "../shared/path";
+import {
+  validateGlobPattern,
+  validateVirtualPath,
+  type VirtualPath,
+} from "../shared/path";
 
 export const MAX_TEXT_BYTES = 1024 * 1024;
 
@@ -45,48 +49,16 @@ const confirmedNameSchema = z
     (value) => !value.includes("/") && !value.includes("\0"),
     "confirmation must be a file name",
   );
-const globPatternSchema = z
-  .string()
-  .min(1)
-  .max(1024)
-  .superRefine((value, context) => {
-    if (!value.startsWith("/")) {
-      context.addIssue({
-        code: "custom",
-        message: "glob pattern must be absolute",
-      });
-      return;
-    }
-    if (hasControlCharacter(value)) {
-      context.addIssue({
-        code: "custom",
-        message: "glob pattern may not contain control characters",
-      });
-      return;
-    }
-    if (value === "/") {
-      return;
-    }
-
-    const segments = value.split("/").slice(1);
-    if (
-      segments.some(
-        (segment) => segment === "" || segment === "." || segment === "..",
-      )
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "glob pattern must use canonical path segments",
-      });
-    }
-  });
-
-function hasControlCharacter(value: string): boolean {
-  return [...value].some((character) => {
-    const code = character.codePointAt(0);
-    return code !== undefined && (code < 0x20 || code === 0x7f);
-  });
-}
+const globPatternSchema = z.string().superRefine((value, context) => {
+  try {
+    validateGlobPattern(value);
+  } catch (error) {
+    context.addIssue({
+      code: "custom",
+      message: error instanceof Error ? error.message : "invalid glob pattern",
+    });
+  }
+});
 
 const treeOperationSchema = z
   .object({ kind: z.literal("tree"), path: virtualPathSchema })

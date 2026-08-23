@@ -99,6 +99,7 @@ export function useShowcase(api?: ShowcaseApiLike) {
   const visitorReadControllerRef = useRef<AbortController | undefined>(
     undefined,
   );
+  const visitorOwnerRef = useRef<AbortController | undefined>(undefined);
   stateRef.current = state;
   apiRef.current = api ?? defaultApi;
 
@@ -143,6 +144,9 @@ export function useShowcase(api?: ShowcaseApiLike) {
           current() &&
           !(error instanceof DOMException && error.name === "AbortError")
         ) {
+          if (!background && error instanceof ShowcaseError && error.activity) {
+            dispatch({ type: "activity_appended", activity: error.activity });
+          }
           dispatch({ type: "error_set", error: error as Error });
         }
         return [];
@@ -174,6 +178,7 @@ export function useShowcase(api?: ShowcaseApiLike) {
       mutationControllerRef.current = undefined;
       visitorReadControllerRef.current?.abort();
       visitorReadControllerRef.current = undefined;
+      visitorOwnerRef.current = undefined;
     };
   }, [refresh]);
 
@@ -190,7 +195,7 @@ export function useShowcase(api?: ShowcaseApiLike) {
           503,
         );
       }
-      if (mutationRef.current) {
+      if (mutationRef.current || visitorReadRef.current) {
         throw new ShowcaseError(
           "operation_in_progress",
           "Another operation is still running.",
@@ -200,6 +205,7 @@ export function useShowcase(api?: ShowcaseApiLike) {
       mutationRef.current = true;
       const controller = new AbortController();
       mutationControllerRef.current = controller;
+      visitorOwnerRef.current = controller;
       refreshEpochRef.current += 1;
       refreshRef.current?.abort();
       dispatchIfMounted({ type: "busy_changed", busyAction });
@@ -215,6 +221,12 @@ export function useShowcase(api?: ShowcaseApiLike) {
         await refresh(false);
         return result;
       } catch (error) {
+        if (error instanceof ShowcaseError && error.activity) {
+          dispatchIfMounted({
+            type: "activity_appended",
+            activity: error.activity,
+          });
+        }
         if (isRevisionConflict(error) && conflictPath) {
           dispatchIfMounted({
             type: "revision_conflict",
@@ -229,7 +241,10 @@ export function useShowcase(api?: ShowcaseApiLike) {
         if (mutationControllerRef.current === controller) {
           mutationControllerRef.current = undefined;
         }
-        dispatchIfMounted({ type: "busy_changed", busyAction: undefined });
+        if (visitorOwnerRef.current === controller) {
+          visitorOwnerRef.current = undefined;
+          dispatchIfMounted({ type: "busy_changed", busyAction: undefined });
+        }
       }
     },
     [dispatchIfMounted, refresh],
@@ -264,6 +279,7 @@ export function useShowcase(api?: ShowcaseApiLike) {
       visitorReadRef.current = true;
       const controller = new AbortController();
       visitorReadControllerRef.current = controller;
+      visitorOwnerRef.current = controller;
       dispatchIfMounted({ type: "busy_changed", busyAction: operation.kind });
       try {
         const result = await apiRef.current.operation<T>(
@@ -280,6 +296,12 @@ export function useShowcase(api?: ShowcaseApiLike) {
         return result;
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
+          if (error instanceof ShowcaseError && error.activity) {
+            dispatchIfMounted({
+              type: "activity_appended",
+              activity: error.activity,
+            });
+          }
           dispatchIfMounted({ type: "error_set", error: error as Error });
         }
         throw error;
@@ -288,7 +310,10 @@ export function useShowcase(api?: ShowcaseApiLike) {
         if (visitorReadControllerRef.current === controller) {
           visitorReadControllerRef.current = undefined;
         }
-        dispatchIfMounted({ type: "busy_changed", busyAction: undefined });
+        if (visitorOwnerRef.current === controller) {
+          visitorOwnerRef.current = undefined;
+          dispatchIfMounted({ type: "busy_changed", busyAction: undefined });
+        }
       }
     },
     [dispatchIfMounted],
@@ -353,6 +378,9 @@ export function useShowcase(api?: ShowcaseApiLike) {
           current() &&
           !(error instanceof DOMException && error.name === "AbortError")
         ) {
+          if (error instanceof ShowcaseError && error.activity) {
+            dispatch({ type: "activity_appended", activity: error.activity });
+          }
           dispatch({ type: "error_set", error: error as Error });
         }
       } finally {
@@ -417,6 +445,12 @@ export function useShowcase(api?: ShowcaseApiLike) {
           activity: result.activity,
         });
       } catch (error) {
+        if (error instanceof ShowcaseError && error.activity) {
+          dispatchIfMounted({
+            type: "activity_appended",
+            activity: error.activity,
+          });
+        }
         dispatchIfMounted({ type: "error_set", error: error as Error });
       }
     },
