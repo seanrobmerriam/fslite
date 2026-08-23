@@ -10,6 +10,7 @@ interface UploadDialogProps {
   onClose(): void;
   busy?: boolean;
   returnFocusTarget?: HTMLElement | null;
+  fallbackFocusTarget?: HTMLElement | null;
 }
 
 function uploadPath(directory: VirtualPath, file: File): VirtualPath {
@@ -32,6 +33,7 @@ export function UploadDialog({
   onClose,
   busy = false,
   returnFocusTarget,
+  fallbackFocusTarget,
 }: UploadDialogProps) {
   const [file, setFile] = useState<File>();
   const [error, setError] = useState<string>();
@@ -69,6 +71,7 @@ export function UploadDialog({
       closeable={!busy}
       busy={busy}
       returnFocusTarget={returnFocusTarget}
+      fallbackFocusTarget={fallbackFocusTarget}
     >
       <form className="action-dialog__form" onSubmit={submit}>
         <label>

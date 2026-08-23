@@ -407,6 +407,69 @@ describe("ShowcaseExplorer", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("uses the stable explorer fallback after a successful action refresh removes its trigger", async () => {
+    const user = userEvent.setup();
+    let resolveOperation: (() => void) | undefined;
+    showcaseMock.status.resetting = false;
+    showcaseMock.runOperation.mockReset();
+    showcaseMock.runOperation.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveOperation = resolve;
+        }),
+    );
+    showcaseMock.tree = [
+      {
+        path: "/todo.txt" as VirtualPath,
+        depth: 0,
+        node: {
+          workspace_id: "workspace",
+          id: "todo-removed",
+          parent_id: null,
+          name: "todo.txt",
+          kind: "file",
+          logical_size: 0,
+          created_at_ms: 1,
+          modified_at_ms: 1,
+          accessed_at_ms: 1,
+          revision: 1,
+          attributes: {},
+        },
+      },
+    ] as TreeEntry[];
+    showcaseMock.selectedPath = "/todo.txt" as VirtualPath;
+    showcaseMock.selectedNode = showcaseMock.tree[0]?.node;
+    showcaseMock.editor = {
+      path: "/todo.txt" as VirtualPath,
+      text: "server copy",
+      original: "server copy",
+      dirty: false,
+    };
+    const view = render(<ShowcaseExplorer />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for todo.txt" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const name = screen.getByRole("textbox", { name: "Name" });
+    await user.clear(name);
+    await user.type(name, "renamed.txt");
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+
+    showcaseMock.tree = [];
+    showcaseMock.selectedPath = undefined;
+    showcaseMock.selectedNode = undefined;
+    view.rerender(<ShowcaseExplorer />);
+    resolveOperation?.();
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("region", { name: "Filesystem explorer" }),
+    ).toHaveFocus();
+  });
+
   it("requires an explicit draft decision before create-file or upload overwrite", async () => {
     const user = userEvent.setup();
     showcaseMock.status.resetting = false;

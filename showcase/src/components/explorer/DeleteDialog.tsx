@@ -13,6 +13,7 @@ interface DeleteDialogProps {
   busy?: boolean;
   initialMode?: "trash" | "remove";
   returnFocusTarget?: HTMLElement | null;
+  fallbackFocusTarget?: HTMLElement | null;
 }
 
 export function DeleteDialog({
@@ -22,6 +23,7 @@ export function DeleteDialog({
   busy = false,
   initialMode = "trash",
   returnFocusTarget,
+  fallbackFocusTarget,
 }: DeleteDialogProps) {
   const [mode, setMode] = useState<"trash" | "remove">(initialMode);
   const [confirmation, setConfirmation] = useState("");
@@ -65,6 +67,7 @@ export function DeleteDialog({
       closeable={!busy}
       busy={busy}
       returnFocusTarget={returnFocusTarget}
+      fallbackFocusTarget={fallbackFocusTarget}
     >
       <form className="action-dialog__form" onSubmit={submit}>
         <fieldset disabled={busy}>

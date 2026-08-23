@@ -13,6 +13,7 @@ interface CreateDialogProps {
   onClose(): void;
   busy?: boolean;
   returnFocusTarget?: HTMLElement | null;
+  fallbackFocusTarget?: HTMLElement | null;
 }
 
 function childPath(directory: VirtualPath, name: string): VirtualPath {
@@ -37,6 +38,7 @@ export function CreateDialog({
   onClose,
   busy = false,
   returnFocusTarget,
+  fallbackFocusTarget,
 }: CreateDialogProps) {
   const [name, setName] = useState(kind === "file" ? "note.txt" : "notes");
   const [error, setError] = useState<string>();
@@ -69,6 +71,7 @@ export function CreateDialog({
       closeable={!busy}
       busy={busy}
       returnFocusTarget={returnFocusTarget}
+      fallbackFocusTarget={fallbackFocusTarget}
     >
       <form className="action-dialog__form" onSubmit={submit}>
         <label>

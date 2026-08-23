@@ -13,6 +13,7 @@ interface ActionDialogProps {
   closeable?: boolean;
   busy?: boolean;
   returnFocusTarget?: HTMLElement | null;
+  fallbackFocusTarget?: HTMLElement | null;
   children: ReactNode;
 }
 
@@ -27,6 +28,16 @@ function focusableElements(container: HTMLElement): HTMLElement[] {
   );
 }
 
+function canRestoreFocus(target: HTMLElement | null): target is HTMLElement {
+  return Boolean(
+    target &&
+    target.isConnected &&
+    !target.matches(":disabled") &&
+    !target.hasAttribute("hidden") &&
+    !target.closest('[inert], [aria-hidden="true"]'),
+  );
+}
+
 /** Modal shell with labelled content, a keyboard focus loop, and safe dismissal. */
 export function ActionDialog({
   title,
@@ -35,6 +46,7 @@ export function ActionDialog({
   closeable = true,
   busy = false,
   returnFocusTarget,
+  fallbackFocusTarget,
   children,
 }: ActionDialogProps) {
   const titleId = useId();
@@ -48,6 +60,9 @@ export function ActionDialog({
           ? document.activeElement
           : null),
   );
+  const fallbackFocusRef = useRef<HTMLElement | null>(
+    fallbackFocusTarget ?? null,
+  );
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -60,7 +75,14 @@ export function ActionDialog({
   }, [busy]);
 
   useEffect(() => {
-    return () => returnFocusRef.current?.focus();
+    return () => {
+      const target = canRestoreFocus(returnFocusRef.current)
+        ? returnFocusRef.current
+        : canRestoreFocus(fallbackFocusRef.current)
+          ? fallbackFocusRef.current
+          : null;
+      target?.focus();
+    };
   }, []);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

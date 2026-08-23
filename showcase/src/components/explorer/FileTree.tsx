@@ -46,6 +46,33 @@ function isVisible(
   return true;
 }
 
+function isTabStop(element: HTMLElement): boolean {
+  return Boolean(
+    element.isConnected &&
+    element.tabIndex >= 0 &&
+    !element.matches(":disabled") &&
+    !element.hasAttribute("hidden") &&
+    !element.closest('[inert], [aria-hidden="true"]'),
+  );
+}
+
+function adjacentDocumentTabStop(
+  origin: HTMLElement,
+  direction: "next" | "previous",
+): HTMLElement | undefined {
+  const root = origin.ownerDocument.body;
+  const walker = origin.ownerDocument.createTreeWalker(root, 1);
+  const stops: HTMLElement[] = [];
+  for (let current = walker.nextNode(); current; current = walker.nextNode()) {
+    if (current instanceof HTMLElement && isTabStop(current)) {
+      stops.push(current);
+    }
+  }
+  const index = stops.indexOf(origin);
+  if (index < 0) return undefined;
+  return direction === "next" ? stops[index + 1] : stops[index - 1];
+}
+
 /** A compact, keyboard-first tree that keeps DOM and visual hierarchy aligned. */
 export function FileTree({
   entries,
@@ -65,6 +92,9 @@ export function FileTree({
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [menuPath, setMenuPath] = useState<VirtualPath>();
   const [menuItemIndex, setMenuItemIndex] = useState(0);
+  const [tabNavigation, setTabNavigation] = useState<
+    { origin: HTMLButtonElement; direction: "next" | "previous" } | undefined
+  >();
   const visible = useMemo(
     () => entries.filter((entry) => isVisible(entry, expanded)),
     [entries, expanded],
@@ -95,6 +125,15 @@ export function FileTree({
       ?.querySelector<HTMLElement>('[role="menuitem"][tabindex="0"]')
       ?.focus();
   }, [menuItemIndex, menuPath]);
+
+  useEffect(() => {
+    if (menuPath || !tabNavigation) return;
+    adjacentDocumentTabStop(
+      tabNavigation.origin,
+      tabNavigation.direction,
+    )?.focus();
+    setTabNavigation(undefined);
+  }, [menuPath, tabNavigation]);
 
   useEffect(() => {
     const closeOnClickAway = (event: MouseEvent) => {
@@ -204,7 +243,13 @@ export function FileTree({
     }
     if (event.key === "Tab") {
       event.preventDefault();
-      closeMenu(true);
+      if (menuTriggerRef.current) {
+        setTabNavigation({
+          origin: menuTriggerRef.current,
+          direction: event.shiftKey ? "previous" : "next",
+        });
+      }
+      setMenuPath(undefined);
       return;
     }
 
@@ -328,6 +373,7 @@ export function FileTree({
                       onClick={() => {
                         menuTriggerRef.current =
                           document.activeElement as HTMLButtonElement;
+                        setTabNavigation(undefined);
                         setMenuItemIndex(0);
                         setMenuPath(menuOpen ? undefined : entry.path);
                       }}

@@ -173,8 +173,15 @@ describe("FileTree", () => {
 
     await user.keyboard("{Tab}");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    expect(
+    expect(screen.getByRole("button", { name: "Outside tree" })).toHaveFocus();
+
+    await user.click(
       screen.getByRole("button", { name: "Actions for todo.txt" }),
+    );
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Actions for docs" }),
     ).toHaveFocus();
 
     await user.click(screen.getByRole("button", { name: "Outside tree" }));

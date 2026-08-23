@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import type { PublicOperation } from "../../lib/server/schemas";
 import type { TreeEntry } from "../../lib/shared/contracts";
@@ -98,6 +98,7 @@ export function ShowcaseExplorer() {
     setEditorText,
     upload,
   } = useShowcase();
+  const explorerRef = useRef<HTMLDivElement>(null);
   const [dialog, setDialog] = useState<DialogState>();
   const [draftGuard, setDraftGuard] = useState<DraftGuardState>();
   const resetting = state.status?.resetting ?? false;
@@ -216,7 +217,11 @@ export function ShowcaseExplorer() {
   return (
     <>
       <div
+        ref={explorerRef}
         className="showcase-explorer"
+        role="region"
+        tabIndex={-1}
+        aria-label="Filesystem explorer"
         aria-busy={busy}
         aria-hidden={modalOpen}
         inert={modalOpen}
@@ -287,6 +292,7 @@ export function ShowcaseExplorer() {
           kind={dialog.item}
           busy={busy}
           returnFocusTarget={dialog.returnFocusTarget}
+          fallbackFocusTarget={explorerRef.current}
           onCreate={(operation) => completeOperation(operation, dialog)}
           onClose={closeDialog}
         />
@@ -296,6 +302,7 @@ export function ShowcaseExplorer() {
           directory={dialog.directory}
           busy={busy}
           returnFocusTarget={dialog.returnFocusTarget}
+          fallbackFocusTarget={explorerRef.current}
           onUpload={(path, file) => completeUpload(path, file, dialog)}
           onClose={closeDialog}
         />
@@ -306,6 +313,7 @@ export function ShowcaseExplorer() {
           mode={dialog.mode}
           busy={busy}
           returnFocusTarget={dialog.returnFocusTarget}
+          fallbackFocusTarget={explorerRef.current}
           onSubmit={(operation) => completeOperation(operation, dialog)}
           onClose={closeDialog}
         />
@@ -316,6 +324,7 @@ export function ShowcaseExplorer() {
           initialMode={dialog.initialMode}
           busy={busy}
           returnFocusTarget={dialog.returnFocusTarget}
+          fallbackFocusTarget={explorerRef.current}
           onSubmit={(operation) => completeOperation(operation, dialog)}
           onClose={closeDialog}
         />
@@ -326,6 +335,7 @@ export function ShowcaseExplorer() {
           description="This action changes the server item currently open in the editor. Your local draft will remain here, but it will no longer match the server item."
           onClose={() => setDraftGuard(undefined)}
           returnFocusTarget={draftGuard.dialog.returnFocusTarget}
+          fallbackFocusTarget={explorerRef.current}
           busy={busy}
           closeable={!busy}
         >
