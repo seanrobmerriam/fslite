@@ -1,0 +1,13 @@
+http://{$SHOWCASE_HOSTNAME:localhost}, http://127.0.0.1 {
+    encode zstd gzip
+
+    header {
+        -Server
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+    }
+
+    reverse_proxy astro:4321
+}

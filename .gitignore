@@ -4,6 +4,11 @@ docs/
 .env
 .superpowers/
 
+# Local deployment credentials. Keep the non-secret template tracked.
+/deploy/showcase/fslite-token
+/deploy/showcase/fslite-token.*
+!/deploy/showcase/fslite-token.example
+
 # Local SQLite artifacts left by examples/batch.rs and similar
 fslite.db
 fslite.db-shm

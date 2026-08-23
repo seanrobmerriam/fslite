@@ -241,6 +241,15 @@ fslite-server port. Public browsers must call that server-side gateway; never
 send them this bearer credential. The image runs as UID/GID `10001` and its
 `/readyz` health check is available to private-network peers.
 
+## Public showcase deployment
+
+The Astro showcase is a disposable, shared filesystem demo: it runs behind
+Caddy, keeps the upstream bearer token server-side, and resets its seeded
+workspace every 15 minutes. The reference Compose stack exposes Caddy only;
+Astro and `fslite-server` have no host ports. See the
+[showcase operator guide](deploy/showcase/README.md) for the non-root image,
+shared secret file, health checks, and `docker-caddy-astro` integration.
+
 Every verb `fslite-command` understands corresponds one-to-one to a
 `FileSystem` method: `usage`, `stat`, `exists`, `ls`, `tree`, `mkdir`, `cat`,
 `write`, `write-at`, `append`, `truncate`, `touch`, `cp`, `mv`, `rm`, `ln`,

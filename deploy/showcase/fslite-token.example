@@ -1,0 +1,3 @@
+# This is deliberately not a usable secret. Generate the real file with:
+# openssl rand -hex 32 > deploy/showcase/fslite-token
+replace-with-a-generated-64-hex-character-token
