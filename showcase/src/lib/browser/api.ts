@@ -2,6 +2,7 @@ import type {
   ActivityRecord,
   GatewayResult,
   JsonValue,
+  PublicWorkspaceUsage,
 } from "../shared/contracts";
 import type { VirtualPath } from "../shared/path";
 import type { PublicOperation } from "../server/schemas";
@@ -26,7 +27,7 @@ export interface BrowserStatus {
   resetting: boolean;
   nextResetAt: number | null;
   now: number;
-  usage: unknown;
+  usage: PublicWorkspaceUsage;
 }
 
 export class ShowcaseError extends Error {
@@ -136,7 +137,6 @@ const changeSchema = z
   .strict();
 const usageSchema = z
   .object({
-    workspace_id: safeString,
     active_logical_bytes: nonNegativeInteger,
     trashed_logical_bytes: nonNegativeInteger,
     staged_bytes: nonNegativeInteger,

@@ -18,7 +18,8 @@ import {
 } from "./reducer";
 
 const BACKGROUND_REFRESH_MS = 10_000;
-const STATUS_POLL_MS = 500;
+const STATUS_POLL_MS = 2_000;
+const RESETTING_STATUS_POLL_MS = 250;
 
 interface ShowcaseApiLike {
   status(signal?: AbortSignal): ReturnType<ShowcaseApi["status"]>;
@@ -101,6 +102,7 @@ export function useShowcase(api?: ShowcaseApiLike) {
   const readRef = useRef<AbortController | undefined>(undefined);
   const readEpochRef = useRef(0);
   const mutationRef = useRef(false);
+  const reconciledGenerationRef = useRef<number | undefined>(undefined);
   const mutationControllerRef = useRef<AbortController | undefined>(undefined);
   const visitorReadRef = useRef(false);
   const visitorReadControllerRef = useRef<AbortController | undefined>(
@@ -134,6 +136,9 @@ export function useShowcase(api?: ShowcaseApiLike) {
         // reset banner and disabled controls observable while the gateway is
         // deliberately rejecting all new work.
         dispatch({ type: "status_loaded", status });
+        if (reconciledGenerationRef.current === undefined) {
+          reconciledGenerationRef.current = status.generation;
+        }
         if (status.resetting) {
           dispatch({ type: "availability_changed", availability: "ready" });
           return [];
@@ -205,24 +210,40 @@ export function useShowcase(api?: ShowcaseApiLike) {
 
   useEffect(() => {
     let active = true;
+    let timer: ReturnType<typeof globalThis.setTimeout> | undefined;
     const pollStatus = async () => {
+      let nextDelay = STATUS_POLL_MS;
       try {
         const status = await apiRef.current.status();
-        if (active) dispatch({ type: "status_loaded", status });
+        if (!active) return;
+        const previous = stateRef.current.status;
+        dispatch({ type: "status_loaded", status });
+        nextDelay = status.resetting
+          ? RESETTING_STATUS_POLL_MS
+          : STATUS_POLL_MS;
+        const resetCompleted =
+          previous !== undefined &&
+          !status.resetting &&
+          (previous.resetting || status.generation !== previous.generation);
+        if (
+          resetCompleted &&
+          reconciledGenerationRef.current !== status.generation
+        ) {
+          reconciledGenerationRef.current = status.generation;
+          await refresh(true);
+        }
       } catch {
         // Refresh owns user-facing availability errors; status polling merely
         // keeps reset controls in sync without creating visitor activity.
       }
+      if (active) timer = globalThis.setTimeout(pollStatus, nextDelay);
     };
-    const timer = globalThis.setInterval(
-      () => void pollStatus(),
-      STATUS_POLL_MS,
-    );
+    timer = globalThis.setTimeout(pollStatus, STATUS_POLL_MS);
     return () => {
       active = false;
-      globalThis.clearInterval(timer);
+      if (timer !== undefined) globalThis.clearTimeout(timer);
     };
-  }, []);
+  }, [refresh]);
 
   const runMutation = useCallback(
     async <T>(
@@ -245,6 +266,9 @@ export function useShowcase(api?: ShowcaseApiLike) {
         );
       }
       mutationRef.current = true;
+      readEpochRef.current += 1;
+      readRef.current?.abort();
+      readRef.current = undefined;
       const controller = new AbortController();
       mutationControllerRef.current = controller;
       visitorOwnerRef.current = controller;

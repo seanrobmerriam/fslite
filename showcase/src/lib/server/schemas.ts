@@ -87,6 +87,7 @@ const copyOperationSchema = z
     from: virtualPathSchema,
     to: virtualPathSchema,
     recursive: z.boolean(),
+    expectedRevision: revisionSchema,
   })
   .strict();
 const moveOperationSchema = z
@@ -94,6 +95,7 @@ const moveOperationSchema = z
     kind: z.literal("move"),
     from: virtualPathSchema,
     to: virtualPathSchema,
+    expectedRevision: revisionSchema,
   })
   .strict();
 const trashOperationSchema = z
@@ -109,6 +111,7 @@ const removeOperationSchema = z
     path: virtualPathSchema,
     recursive: z.boolean(),
     confirmedPath: z.string(),
+    expectedRevision: revisionSchema,
   })
   .strict()
   .superRefine((operation, context) => {
@@ -135,6 +138,7 @@ const restoreOperationSchema = z
     kind: z.literal("restore"),
     trashId: trashIdSchema,
     destination: virtualPathSchema.optional(),
+    expectedRevision: revisionSchema,
   })
   .strict();
 const purgeOperationSchema = z

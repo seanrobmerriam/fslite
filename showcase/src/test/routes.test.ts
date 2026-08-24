@@ -77,10 +77,7 @@ describe("Astro API route contracts", () => {
     const readyResponse = await ready(
       context(new Request("http://showcase.test/api/health/ready")) as never,
     );
-    expect(await readyResponse.json()).toEqual({
-      ready: true,
-      workspaceId: "ws-1",
-    });
+    expect(await readyResponse.json()).toEqual({ ready: true });
 
     const { GET: status } = await import("../pages/api/status");
     const statusResponse = await status(
@@ -97,7 +94,9 @@ describe("Astro API route contracts", () => {
     });
     expect(body).not.toHaveProperty("workspaceId");
     expect(body).not.toHaveProperty("activeOperations");
+    expect(JSON.stringify(body)).not.toContain("ws-1");
     expect(body.now).toEqual(expect.any(Number));
+    expect(runtime.status).toHaveBeenCalledWith("198.51.100.7");
   });
 
   it("uses one request ID for direct media-type errors", async () => {

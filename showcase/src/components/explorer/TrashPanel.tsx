@@ -61,6 +61,7 @@ export function TrashPanel({
       await onOperation({
         kind: "restore",
         trashId: restore.id,
+        expectedRevision: restore.node.revision,
         ...(target ? { destination: target as VirtualPath } : {}),
       });
       setRestore(undefined);

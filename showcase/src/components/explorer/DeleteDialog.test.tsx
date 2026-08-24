@@ -82,6 +82,7 @@ describe("DeleteDialog", () => {
       path: "/docs/readme.txt",
       recursive: false,
       confirmedPath: "/docs/readme.txt",
+      expectedRevision: 4,
     });
   });
 
@@ -108,6 +109,7 @@ describe("DeleteDialog", () => {
       path: "/docs",
       recursive: true,
       confirmedPath: "/docs",
+      expectedRevision: 4,
     });
   });
 });

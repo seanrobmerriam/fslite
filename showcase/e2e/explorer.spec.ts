@@ -46,6 +46,44 @@ test("records one visitor mutation while reconciliation adds no activity", async
   );
 });
 
+test("rejects a stale permanent removal with a visible 409 conflict", async ({
+  page,
+  e2e,
+}) => {
+  await openWorkspace(page, e2e.baseURL);
+  const secondActor = await e2e.request("/api/operation", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      kind: "write_file",
+      path: "/README.md",
+      text: "updated by another visitor",
+    }),
+  });
+  expect(secondActor.status, await secondActor.text()).toBe(200);
+
+  await chooseAction(page, "README.md", "Delete permanently");
+  await page.getByRole("radio", { name: "Delete permanently" }).check();
+  await page
+    .getByRole("textbox", { name: "Confirm full path" })
+    .fill("/README.md");
+  await performAndAssertNewestActivity(
+    page,
+    () =>
+      page.getByRole("button", { name: "Delete permanently" }).last().click(),
+    "DELETE",
+    "fs/README.md",
+    409,
+  );
+  await expect(page.getByRole("dialog", { name: "Delete item" })).toContainText(
+    /revision|changed/i,
+  );
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("tree", { name: "Files" })).toContainText(
+    "README.md",
+  );
+});
+
 test("completes the visible filesystem journey with gateway activity", async ({
   page,
   e2e,

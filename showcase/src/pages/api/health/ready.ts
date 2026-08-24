@@ -11,7 +11,8 @@ export const prerender = false;
 
 export const GET: APIRoute = async () => {
   try {
-    return json(await (await getShowcaseRuntime()).readiness());
+    await (await getShowcaseRuntime()).readiness();
+    return json({ ready: true });
   } catch (error) {
     return gatewayErrorResponse(error);
   }

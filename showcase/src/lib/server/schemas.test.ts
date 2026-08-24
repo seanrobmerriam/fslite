@@ -10,13 +10,36 @@ const acceptedOperations = [
   { kind: "read_file", path },
   { kind: "write_file", path, text: "hello", expectedRevision: 1 },
   { kind: "mkdir", path: "/docs/new", parents: true },
-  { kind: "copy", from: path, to: "/docs/copy.txt", recursive: false },
-  { kind: "move", from: path, to: "/docs/moved.txt" },
+  {
+    kind: "copy",
+    from: path,
+    to: "/docs/copy.txt",
+    recursive: false,
+    expectedRevision: 2,
+  },
+  { kind: "move", from: path, to: "/docs/moved.txt", expectedRevision: 2 },
   { kind: "trash", path, expectedRevision: 2 },
-  { kind: "remove", path, recursive: false, confirmedPath: path },
-  { kind: "remove", path, recursive: true, confirmedPath: path },
+  {
+    kind: "remove",
+    path,
+    recursive: false,
+    confirmedPath: path,
+    expectedRevision: 2,
+  },
+  {
+    kind: "remove",
+    path,
+    recursive: true,
+    confirmedPath: path,
+    expectedRevision: 2,
+  },
   { kind: "list_trash" },
-  { kind: "restore", trashId, destination: "/restored.txt" },
+  {
+    kind: "restore",
+    trashId,
+    destination: "/restored.txt",
+    expectedRevision: 2,
+  },
   { kind: "purge", trashId, confirmedName: "readme.txt" },
   { kind: "glob", pattern: "/**/*.txt" },
   { kind: "find", root: "/", nameContains: "readme" },
@@ -66,6 +89,18 @@ describe("parsePublicOperation", () => {
   ])("rejects unsafe revision or oversized text %#", (operation) => {
     expect(() => parsePublicOperation(operation)).toThrow();
   });
+
+  it.each([
+    { kind: "copy", from: path, to: "/copy", recursive: false },
+    { kind: "move", from: path, to: "/moved" },
+    { kind: "remove", path, recursive: false, confirmedPath: path },
+    { kind: "restore", trashId },
+  ])(
+    "requires optimistic concurrency for destructive operation %#",
+    (operation) => {
+      expect(() => parsePublicOperation(operation)).toThrow();
+    },
+  );
 
   it("measures text input using UTF-8 bytes", () => {
     expect(() =>

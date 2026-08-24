@@ -121,13 +121,10 @@ test.describe("reset lifecycle", () => {
     await expect(
       page.getByRole("status", { name: "Workspace reset in progress" }),
     ).toBeHidden();
-    await expect(
-      page.getByRole("button", { name: "Refresh files" }),
-    ).toBeEnabled();
-    await page.getByRole("button", { name: "Refresh files" }).click();
     await expect(page.getByRole("tree", { name: "Files" })).not.toContainText(
       marker,
     );
+    await expect(editor).toHaveValue(`${localDraft} and still editable`);
 
     const fresh = await browser.newPage();
     try {

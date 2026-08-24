@@ -79,8 +79,14 @@ export function MoveCopyDialog({
               from: entry.path,
               to,
               recursive: entry.node.kind === "directory",
+              expectedRevision: entry.node.revision,
             }
-          : { kind: "move", from: entry.path, to };
+          : {
+              kind: "move",
+              from: entry.path,
+              to,
+              expectedRevision: entry.node.revision,
+            };
       setError(undefined);
       await onSubmit(operation);
     } catch (reason) {

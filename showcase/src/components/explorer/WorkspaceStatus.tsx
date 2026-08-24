@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { BrowserStatus } from "../../lib/browser/api";
-import type { WorkspaceUsage } from "../../lib/shared/contracts";
+import type { PublicWorkspaceUsage } from "../../lib/shared/contracts";
 
 interface WorkspaceStatusProps {
   status: BrowserStatus | undefined;
@@ -43,9 +43,9 @@ export function createDefaultClock(
 
 const defaultClock = createDefaultClock();
 
-function usageOf(value: unknown): Partial<WorkspaceUsage> {
+function usageOf(value: unknown): Partial<PublicWorkspaceUsage> {
   return value && typeof value === "object"
-    ? (value as Partial<WorkspaceUsage>)
+    ? (value as Partial<PublicWorkspaceUsage>)
     : {};
 }
 
@@ -124,11 +124,16 @@ export function WorkspaceStatus({
       <dl>
         <div>
           <dt>Storage</dt>
-          <dd>{formatMebibytes(usage.active_logical_bytes)} / 10 MiB</dd>
+          <dd>
+            {formatMebibytes(usage.active_logical_bytes)} /{" "}
+            {formatMebibytes(usage.max_logical_bytes)}
+          </dd>
         </div>
         <div>
           <dt>Nodes</dt>
-          <dd>{usage.active_nodes ?? 0} / 250 nodes</dd>
+          <dd>
+            {usage.active_nodes ?? 0} / {usage.max_nodes ?? 0} nodes
+          </dd>
         </div>
         <div>
           <dt>Sandbox</dt>

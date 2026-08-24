@@ -35,6 +35,7 @@ function runtimeDependencies(
       activity: {} as ActivityRecord,
       contentType: "application/octet-stream",
     })),
+    statusUsage: vi.fn(async () => ({ active_nodes: 2 })),
   };
   const coordinator = {
     start: vi.fn(async () => undefined),
@@ -131,6 +132,7 @@ describe("getShowcaseRuntime", () => {
       execute: ReturnType<typeof vi.fn>;
       upload: ReturnType<typeof vi.fn>;
       download: ReturnType<typeof vi.fn>;
+      statusUsage: ReturnType<typeof vi.fn>;
     };
     const coordinator = (
       dependencies.createCoordinator as ReturnType<typeof vi.fn>
@@ -151,7 +153,7 @@ describe("getShowcaseRuntime", () => {
       activity: {},
       contentType: "application/octet-stream",
     });
-    await expect(runtime.status()).resolves.toEqual({
+    await expect(runtime.status("203.0.113.1")).resolves.toEqual({
       ready: true,
       workspaceId: "workspace-1",
       activeOperations: 0,
@@ -174,7 +176,8 @@ describe("getShowcaseRuntime", () => {
       "203.0.113.1",
     );
     expect(client.readFile).not.toHaveBeenCalled();
-    expect(client.usage).toHaveBeenCalledTimes(1);
+    expect(gateway.statusUsage).toHaveBeenCalledWith("203.0.113.1");
+    expect(client.usage).not.toHaveBeenCalled();
     // Status remains observable while the reset gate rejects visitor work.
     expect(coordinator.withOperation).toHaveBeenCalledTimes(3);
     expect("resetNow" in runtime).toBe(false);

@@ -25,21 +25,26 @@ export interface ShowcaseClient {
   copy(
     from: VirtualPath,
     to: VirtualPath,
-    options: { recursive: boolean },
+    options: { recursive: boolean; expectedRevision: number },
   ): Promise<UpstreamResult<unknown>>;
-  move(from: VirtualPath, to: VirtualPath): Promise<UpstreamResult<unknown>>;
+  move(
+    from: VirtualPath,
+    to: VirtualPath,
+    options: { expectedRevision: number },
+  ): Promise<UpstreamResult<unknown>>;
   trash(
     path: VirtualPath,
     expectedRevision?: number,
   ): Promise<UpstreamResult<unknown>>;
   remove(
     path: VirtualPath,
-    options: { recursive: boolean },
+    options: { recursive: boolean; expectedRevision: number },
   ): Promise<UpstreamResult<unknown>>;
   listTrash(): Promise<UpstreamResult<unknown>>;
   restore(
     trashId: string,
     destination?: VirtualPath,
+    expectedRevision?: number,
   ): Promise<UpstreamResult<unknown>>;
   purge(trashId: string): Promise<UpstreamResult<unknown>>;
   glob(pattern: string): Promise<UpstreamResult<unknown>>;
@@ -72,6 +77,11 @@ export class GatewayPurgeConfirmationError extends Error {
   constructor() {
     super("Purge confirmation did not match the current trash entry");
   }
+}
+
+export interface ShowcaseGatewayDependencies {
+  now?: () => number;
+  statusCacheMs?: number;
 }
 
 function readBuckets(operation: PublicOperation): readonly RateLimitBucket[] {
@@ -111,10 +121,50 @@ function toGatewayResult(
 
 /** Server-side operation dispatcher; it exposes only finite, fixed client routes. */
 export class ShowcaseGateway {
+  private readonly now: () => number;
+  private readonly statusCacheMs: number;
+  private usageCache:
+    { readonly data: unknown; readonly expiresAt: number } | undefined;
+  private usagePending: Promise<unknown> | undefined;
+
   constructor(
     private readonly client: ShowcaseClient,
     private readonly limiter = new RollingWindowRateLimiter(),
-  ) {}
+    dependencies: ShowcaseGatewayDependencies = {},
+  ) {
+    this.now = dependencies.now ?? Date.now;
+    this.statusCacheMs = dependencies.statusCacheMs ?? 1_000;
+  }
+
+  /**
+   * Status is charged to the same read bucket as JSON reads and downloads.
+   * The short process-wide cache and in-flight promise prevent many browser
+   * polls from becoming matching upstream usage queries.
+   */
+  async statusUsage(clientIp: string): Promise<unknown> {
+    this.enforce(clientIp, ["read"]);
+    const now = this.now();
+    if (this.usageCache && this.usageCache.expiresAt > now) {
+      return this.usageCache.data;
+    }
+    if (this.usagePending) {
+      return this.usagePending;
+    }
+
+    const pending = this.client.usage().then((result) => {
+      this.usageCache = {
+        data: result.data,
+        expiresAt: this.now() + this.statusCacheMs,
+      };
+      return result.data;
+    });
+    this.usagePending = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this.usagePending === pending) this.usagePending = undefined;
+    }
+  }
 
   async execute(
     input: unknown,
@@ -144,11 +194,14 @@ export class ShowcaseGateway {
         return toGatewayResult(
           await this.client.copy(operation.from, operation.to, {
             recursive: operation.recursive,
+            expectedRevision: operation.expectedRevision,
           }),
         );
       case "move":
         return toGatewayResult(
-          await this.client.move(operation.from, operation.to),
+          await this.client.move(operation.from, operation.to, {
+            expectedRevision: operation.expectedRevision,
+          }),
         );
       case "trash":
         return toGatewayResult(
@@ -158,13 +211,18 @@ export class ShowcaseGateway {
         return toGatewayResult(
           await this.client.remove(operation.path, {
             recursive: operation.recursive,
+            expectedRevision: operation.expectedRevision,
           }),
         );
       case "list_trash":
         return toGatewayResult(await this.client.listTrash());
       case "restore":
         return toGatewayResult(
-          await this.client.restore(operation.trashId, operation.destination),
+          await this.client.restore(
+            operation.trashId,
+            operation.destination,
+            operation.expectedRevision,
+          ),
         );
       case "purge":
         return this.purge(operation.trashId, operation.confirmedName);

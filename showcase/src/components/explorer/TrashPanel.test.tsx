@@ -47,6 +47,7 @@ describe("TrashPanel", () => {
       kind: "restore",
       trashId: item.id,
       destination: "/restored/readme.txt" as VirtualPath,
+      expectedRevision: 1,
     });
     expect(onList).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("/docs/readme.txt")).not.toBeInTheDocument();

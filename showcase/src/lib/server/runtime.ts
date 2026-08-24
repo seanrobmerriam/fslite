@@ -1,4 +1,4 @@
-import type { GatewayResult } from "../shared/contracts";
+import type { GatewayResult, WorkspaceUsage } from "../shared/contracts";
 import type { VirtualPath } from "../shared/path";
 import { loadServerConfig, type ServerConfig } from "./config";
 import {
@@ -17,6 +17,7 @@ interface RuntimeClient extends ShowcaseClient {
 }
 
 interface RuntimeGateway {
+  statusUsage(clientIp: string): Promise<unknown>;
   execute(input: unknown, clientIp: string): Promise<GatewayResult<unknown>>;
   upload(
     path: unknown,
@@ -48,14 +49,14 @@ export interface RuntimeDependencies {
 export interface ShowcaseRuntimeStatus extends ResetSnapshot {
   ready: true;
   workspaceId: string;
-  usage: unknown;
+  usage: WorkspaceUsage;
 }
 
 export interface ShowcaseRuntime {
   readonly workspaceId: string;
   liveness(): { ok: true };
   readiness(): Promise<{ ready: true; workspaceId: string }>;
-  status(): Promise<ShowcaseRuntimeStatus>;
+  status(clientIp: string): Promise<ShowcaseRuntimeStatus>;
   execute(input: unknown, clientIp: string): Promise<GatewayResult<unknown>>;
   upload(
     path: unknown,
@@ -71,7 +72,6 @@ export interface ShowcaseRuntime {
 class ProcessShowcaseRuntime implements ShowcaseRuntime {
   constructor(
     readonly workspaceId: string,
-    private readonly client: RuntimeClient,
     private readonly gateway: RuntimeGateway,
     private readonly coordinator: RuntimeCoordinator,
   ) {}
@@ -84,16 +84,16 @@ class ProcessShowcaseRuntime implements ShowcaseRuntime {
     return { ready: true, workspaceId: this.workspaceId };
   }
 
-  async status(): Promise<ShowcaseRuntimeStatus> {
+  async status(clientIp: string): Promise<ShowcaseRuntimeStatus> {
     // Status is observational and must remain available while the coordinator
     // closes the mutation gate, otherwise the browser cannot render its reset
     // banner or disable controls deterministically.
-    const usage = await this.client.usage();
+    const usage = (await this.gateway.statusUsage(clientIp)) as WorkspaceUsage;
     return {
       ready: true,
       workspaceId: this.workspaceId,
       ...this.coordinator.snapshot(),
-      usage: usage.data,
+      usage,
     };
   }
 
@@ -157,7 +157,7 @@ async function initializeRuntime(
   )(client, config);
 
   await coordinator.start();
-  return new ProcessShowcaseRuntime(workspaceId, client, gateway, coordinator);
+  return new ProcessShowcaseRuntime(workspaceId, gateway, coordinator);
 }
 
 /**

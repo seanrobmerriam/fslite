@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { MAX_BROWSER_FILE_BYTES, ShowcaseApi, ShowcaseError } from "./api";
 
 const usage = {
-  workspace_id: "workspace-redacted-from-ui",
   active_logical_bytes: 1,
   trashed_logical_bytes: 0,
   staged_bytes: 0,
@@ -13,9 +12,10 @@ const usage = {
   max_nodes: 250,
   max_file_bytes: 1024 * 1024,
 };
+const workspaceId = "workspace-redacted-from-ui";
 
 const node = {
-  workspace_id: usage.workspace_id,
+  workspace_id: workspaceId,
   id: "node-1",
   parent_id: null,
   name: "readme.txt",

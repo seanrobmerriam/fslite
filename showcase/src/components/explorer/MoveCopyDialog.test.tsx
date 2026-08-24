@@ -59,6 +59,7 @@ describe("MoveCopyDialog", () => {
       from: "/docs",
       to: "/archive/docs-copy",
       recursive: true,
+      expectedRevision: 1,
     });
   });
 
@@ -88,6 +89,7 @@ describe("MoveCopyDialog", () => {
       kind: "move",
       from: "/docs",
       to: "/guides",
+      expectedRevision: 1,
     });
   });
 
@@ -111,6 +113,7 @@ describe("MoveCopyDialog", () => {
       kind: "move",
       from: "/docs/readme.txt",
       to: "/archive/readme.txt",
+      expectedRevision: 1,
     });
 
     rerender(
@@ -132,6 +135,7 @@ describe("MoveCopyDialog", () => {
       from: "/docs/readme.txt",
       to: "/archive/readme-copy.txt",
       recursive: false,
+      expectedRevision: 1,
     });
   });
 

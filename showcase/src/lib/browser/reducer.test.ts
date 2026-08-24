@@ -27,6 +27,17 @@ const entry = {
   },
 } satisfies TreeEntry;
 
+const emptyUsage = {
+  active_logical_bytes: 0,
+  trashed_logical_bytes: 0,
+  staged_bytes: 0,
+  active_nodes: 0,
+  trashed_nodes: 0,
+  max_logical_bytes: 10 * 1024 * 1024,
+  max_nodes: 250,
+  max_file_bytes: 1024 * 1024,
+};
+
 function reduce(
   ...actions: Parameters<typeof showcaseReducer>[1][]
 ): ShowcaseState {
@@ -44,7 +55,7 @@ describe("showcaseReducer", () => {
           resetting: false,
           nextResetAt: 100,
           now: 1,
-          usage: {},
+          usage: emptyUsage,
         },
       },
       { type: "tree_loaded", entries: [entry], background: false },
@@ -85,7 +96,7 @@ describe("showcaseReducer", () => {
           resetting: true,
           nextResetAt: 200,
           now: 2,
-          usage: {},
+          usage: emptyUsage,
         },
       },
     );

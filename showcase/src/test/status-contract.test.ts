@@ -9,6 +9,9 @@ const runtime = {
 vi.mock("../lib/server/runtime", () => ({
   getShowcaseRuntime: vi.fn(async () => runtime),
 }));
+vi.mock("../lib/server/config", () => ({
+  loadServerConfig: vi.fn(() => ({ trustProxy: false })),
+}));
 
 const usage = {
   workspace_id: "runtime-only-workspace",
@@ -20,6 +23,16 @@ const usage = {
   max_logical_bytes: 10,
   max_nodes: 250,
   max_file_bytes: 1024,
+};
+const publicUsage = {
+  active_logical_bytes: usage.active_logical_bytes,
+  trashed_logical_bytes: usage.trashed_logical_bytes,
+  staged_bytes: usage.staged_bytes,
+  active_nodes: usage.active_nodes,
+  trashed_nodes: usage.trashed_nodes,
+  max_logical_bytes: usage.max_logical_bytes,
+  max_nodes: usage.max_nodes,
+  max_file_bytes: usage.max_file_bytes,
 };
 
 function context(request: Request) {
@@ -69,16 +82,20 @@ describe("public status wire contract", () => {
       generation: 3,
       resetting: false,
       nextResetAt: null,
-      usage,
+      usage: publicUsage,
       now: expect.any(Number),
     });
     expect(wire).not.toHaveProperty("workspaceId");
     expect(wire).not.toHaveProperty("activeOperations");
+    expect(JSON.stringify(wire)).not.toContain("runtime-only-workspace");
+    expect(wire.usage as Record<string, unknown>).not.toHaveProperty(
+      "workspace_id",
+    );
 
     await expect(api.status()).resolves.toMatchObject({
       generation: 3,
       nextResetAt: null,
-      usage,
+      usage: publicUsage,
     });
   });
 });

@@ -283,6 +283,7 @@ describe("ShowcaseExplorer", () => {
         kind: "move",
         from: "/docs",
         to: "/archive/docs",
+        expectedRevision: 1,
       }),
     );
   });
@@ -343,6 +344,7 @@ describe("ShowcaseExplorer", () => {
         path: "/docs",
         recursive: true,
         confirmedPath: "/docs",
+        expectedRevision: 1,
       }),
     );
   });
@@ -402,6 +404,7 @@ describe("ShowcaseExplorer", () => {
         from: "/source.txt",
         to: "/docs/readme.txt",
         recursive: false,
+        expectedRevision: 1,
       }),
     );
   });

@@ -4,6 +4,17 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createDefaultClock, WorkspaceStatus } from "./WorkspaceStatus";
 
+const emptyUsage = {
+  active_logical_bytes: 0,
+  trashed_logical_bytes: 0,
+  staged_bytes: 0,
+  active_nodes: 0,
+  trashed_nodes: 0,
+  max_logical_bytes: 10 * 1024 * 1024,
+  max_nodes: 250,
+  max_file_bytes: 1024 * 1024,
+};
+
 describe("WorkspaceStatus", () => {
   it("binds default browser timers to their receiver and cleans up on unmount", () => {
     const setInterval = vi.fn(function (this: unknown) {
@@ -28,7 +39,7 @@ describe("WorkspaceStatus", () => {
           resetting: false,
           now: 1,
           nextResetAt: 2,
-          usage: {},
+          usage: emptyUsage,
         }}
       />,
     );
@@ -56,7 +67,6 @@ describe("WorkspaceStatus", () => {
           now: 1_000,
           nextResetAt: 61_000,
           usage: {
-            workspace_id: "private",
             active_logical_bytes: 1_048_576,
             trashed_logical_bytes: 0,
             staged_bytes: 0,
@@ -80,6 +90,33 @@ describe("WorkspaceStatus", () => {
     vi.useRealTimers();
   });
 
+  it("renders quota denominators returned by the server", () => {
+    render(
+      <WorkspaceStatus
+        status={{
+          ready: true,
+          generation: 1,
+          resetting: false,
+          now: 1_000,
+          nextResetAt: null,
+          usage: {
+            active_logical_bytes: 2_097_152,
+            trashed_logical_bytes: 0,
+            staged_bytes: 0,
+            active_nodes: 7,
+            trashed_nodes: 0,
+            max_logical_bytes: 5_242_880,
+            max_nodes: 42,
+            max_file_bytes: 524_288,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("2 MiB / 5 MiB")).toBeInTheDocument();
+    expect(screen.getByText("7 / 42 nodes")).toBeInTheDocument();
+  });
+
   it("renders null, skewed, and resetting schedules without going negative", () => {
     const { rerender } = render(
       <WorkspaceStatus
@@ -89,7 +126,7 @@ describe("WorkspaceStatus", () => {
           resetting: false,
           now: 2_000,
           nextResetAt: null,
-          usage: {},
+          usage: emptyUsage,
         }}
       />,
     );
@@ -103,7 +140,7 @@ describe("WorkspaceStatus", () => {
           resetting: false,
           now: 2_000,
           nextResetAt: 1_000,
-          usage: {},
+          usage: emptyUsage,
         }}
       />,
     );
@@ -117,7 +154,7 @@ describe("WorkspaceStatus", () => {
           resetting: true,
           now: 2_000,
           nextResetAt: null,
-          usage: {},
+          usage: emptyUsage,
         }}
       />,
     );
@@ -141,7 +178,7 @@ describe("WorkspaceStatus", () => {
           resetting: false,
           now: 1_000,
           nextResetAt: 61_000,
-          usage: {},
+          usage: emptyUsage,
         }}
       />,
     );
@@ -158,7 +195,7 @@ describe("WorkspaceStatus", () => {
           resetting: false,
           now: 20_000,
           nextResetAt: 80_000,
-          usage: {},
+          usage: emptyUsage,
         }}
       />,
     );

@@ -74,6 +74,9 @@ export interface WorkspaceUsage {
   max_file_bytes: number;
 }
 
+/** Browser-safe usage totals; the shared workspace identity remains private. */
+export type PublicWorkspaceUsage = Omit<WorkspaceUsage, "workspace_id">;
+
 /**
  * A redacted request/response record shown by the browser activity feed.
  * Headers are intentionally excluded because they can contain credentials.

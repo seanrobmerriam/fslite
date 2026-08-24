@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { GatewayRateLimitError, ShowcaseGateway } from "./gateway";
+import { RollingWindowRateLimiter } from "./rate-limit";
 import type { ActivityRecord } from "../shared/contracts";
 import { validateVirtualPath } from "../shared/path";
 
@@ -24,6 +25,16 @@ const internalListActivity: ActivityRecord = {
 
 function upstream(data: unknown = { result: true }) {
   return { data, activity };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
 }
 
 function client() {
@@ -63,15 +74,41 @@ describe("ShowcaseGateway", () => {
         "writeFile",
       ],
       [{ kind: "mkdir", path, parents: true }, "mkdir"],
-      [{ kind: "copy", from: path, to: "/copy.txt", recursive: true }, "copy"],
-      [{ kind: "move", from: path, to: "/moved.txt" }, "move"],
+      [
+        {
+          kind: "copy",
+          from: path,
+          to: "/copy.txt",
+          recursive: true,
+          expectedRevision: 3,
+        },
+        "copy",
+      ],
+      [
+        { kind: "move", from: path, to: "/moved.txt", expectedRevision: 3 },
+        "move",
+      ],
       [{ kind: "trash", path, expectedRevision: 3 }, "trash"],
       [
-        { kind: "remove", path, recursive: true, confirmedPath: path },
+        {
+          kind: "remove",
+          path,
+          recursive: true,
+          confirmedPath: path,
+          expectedRevision: 3,
+        },
         "remove",
       ],
       [{ kind: "list_trash" }, "listTrash"],
-      [{ kind: "restore", trashId, destination: "/restored.txt" }, "restore"],
+      [
+        {
+          kind: "restore",
+          trashId,
+          destination: "/restored.txt",
+          expectedRevision: 3,
+        },
+        "restore",
+      ],
       [{ kind: "purge", trashId, confirmedName: "readme.txt" }, "purge"],
       [{ kind: "glob", pattern: "/**/*.txt" }, "glob"],
       [{ kind: "find", root: "/", nameContains: "readme" }, "find"],
@@ -107,6 +144,87 @@ describe("ShowcaseGateway", () => {
       new TextEncoder().encode("snowman ☃"),
       4,
     );
+  });
+
+  it("forwards optimistic revisions for copy, move, remove, and restore", async () => {
+    const api = client();
+    const gateway = new ShowcaseGateway(api);
+
+    await gateway.execute(
+      {
+        kind: "copy",
+        from: "/a",
+        to: "/b",
+        recursive: false,
+        expectedRevision: 7,
+      },
+      "203.0.113.1",
+    );
+    await gateway.execute(
+      { kind: "move", from: "/a", to: "/b", expectedRevision: 8 },
+      "203.0.113.1",
+    );
+    await gateway.execute(
+      {
+        kind: "remove",
+        path: "/a",
+        recursive: true,
+        confirmedPath: "/a",
+        expectedRevision: 9,
+      },
+      "203.0.113.1",
+    );
+    await gateway.execute(
+      { kind: "restore", trashId, expectedRevision: 10 },
+      "203.0.113.1",
+    );
+
+    expect(api.copy).toHaveBeenCalledWith("/a", "/b", {
+      recursive: false,
+      expectedRevision: 7,
+    });
+    expect(api.move).toHaveBeenCalledWith("/a", "/b", {
+      expectedRevision: 8,
+    });
+    expect(api.remove).toHaveBeenCalledWith("/a", {
+      recursive: true,
+      expectedRevision: 9,
+    });
+    expect(api.restore).toHaveBeenCalledWith(trashId, undefined, 10);
+  });
+
+  it("coalesces status usage upstream while charging the shared per-IP read bucket", async () => {
+    let now = 1_000;
+    const api = client();
+    const pending = deferred<ReturnType<typeof upstream>>();
+    api.usage.mockReturnValueOnce(pending.promise);
+    const limiter = new RollingWindowRateLimiter({ now: () => now });
+    const gateway = new ShowcaseGateway(api, limiter, {
+      now: () => now,
+      statusCacheMs: 1_000,
+    });
+
+    const first = gateway.statusUsage("203.0.113.1");
+    const second = gateway.statusUsage("203.0.113.1");
+    expect(api.usage).toHaveBeenCalledTimes(1);
+    pending.resolve(upstream({ active_nodes: 2 }));
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { active_nodes: 2 },
+      { active_nodes: 2 },
+    ]);
+
+    await gateway.execute({ kind: "tree", path: "/" }, "203.0.113.1");
+    for (let count = 3; count < 120; count += 1) {
+      await gateway.statusUsage("203.0.113.1");
+    }
+    await expect(gateway.download("/a", "203.0.113.1")).rejects.toMatchObject({
+      bucket: "read",
+    });
+    expect(api.usage).toHaveBeenCalledTimes(1);
+
+    now += 61_000;
+    await gateway.statusUsage("203.0.113.1");
+    expect(api.usage).toHaveBeenCalledTimes(2);
   });
 
   it("never exposes reset or workspace lifecycle dispatch", async () => {

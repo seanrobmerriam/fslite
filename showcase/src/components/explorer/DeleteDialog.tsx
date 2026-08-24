@@ -43,6 +43,7 @@ export function DeleteDialog({
               path: entry.path,
               recursive: entry.node.kind === "directory",
               confirmedPath: confirmation,
+              expectedRevision: entry.node.revision,
             }
           : {
               kind: "trash",

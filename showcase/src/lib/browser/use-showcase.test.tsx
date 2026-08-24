@@ -20,7 +20,6 @@ const activity = {
 };
 
 const usage = {
-  workspace_id: "not-rendered",
   active_logical_bytes: 1,
   trashed_logical_bytes: 0,
   staged_bytes: 0,
@@ -30,12 +29,13 @@ const usage = {
   max_nodes: 250,
   max_file_bytes: 1024,
 };
+const workspaceId = "not-rendered";
 
 const fileEntry = {
   path: "/readme.txt" as VirtualPath,
   depth: 0,
   node: {
-    workspace_id: usage.workspace_id,
+    workspace_id: workspaceId,
     id: "node-1",
     parent_id: null,
     name: "readme.txt",
@@ -302,7 +302,7 @@ describe("useShowcase", () => {
     });
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(2_000);
     });
     expect(result.current.state.status?.resetting).toBe(true);
     expect(result.current.state.activities).toEqual([activity]);
@@ -609,6 +609,139 @@ describe("useShowcase", () => {
       dirty: false,
     });
     expect(result.current.state.error).toBeUndefined();
+  });
+
+  it("aborts a pending entry read before starting a mutation", async () => {
+    const api = apiMock();
+    const read = deferred<{ data: unknown; activity: typeof activity }>();
+    let readSignal: AbortSignal | undefined;
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation, signal) => {
+        if (operation.kind === "tree") {
+          return Promise.resolve({ data: tree, activity });
+        }
+        if (operation.kind === "read_file") {
+          readSignal = signal;
+          return read.promise;
+        }
+        if (operation.kind === "mkdir") {
+          return Promise.resolve({
+            data: {},
+            activity: { ...activity, id: "mkdir" },
+          });
+        }
+        throw new Error(`unexpected ${operation.kind}`);
+      },
+    );
+    const { result } = renderHook(() => useShowcase(api));
+    await waitFor(() => expect(result.current.state.status).toBeDefined());
+
+    let selection!: Promise<void>;
+    act(() => {
+      selection = result.current.selectEntry(fileEntry);
+    });
+    await act(async () => {
+      await result.current.runOperation({
+        kind: "mkdir",
+        path: "/new" as VirtualPath,
+        parents: false,
+      });
+    });
+    expect(readSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      read.resolve({
+        data: bytes("stale"),
+        activity: { ...activity, id: "stale-read" },
+      });
+      await selection;
+    });
+    expect(result.current.state.editor.path).toBeUndefined();
+    expect(
+      result.current.state.activities.map((item) => item.id),
+    ).not.toContain("stale-read");
+  });
+
+  it("reconciles the tree exactly once after reset completion without activity or draft loss", async () => {
+    vi.useFakeTimers();
+    const api = apiMock();
+    const marker = {
+      ...fileEntry,
+      path: "/marker.txt" as VirtualPath,
+      node: { ...fileEntry.node, id: "marker", name: "marker.txt" },
+    };
+    (api.status as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({
+        ready: true,
+        generation: 1,
+        resetting: false,
+        nextResetAt: 10_000,
+        now: 1,
+        usage,
+      })
+      .mockResolvedValueOnce({
+        ready: true,
+        generation: 1,
+        resetting: true,
+        nextResetAt: null,
+        now: 2,
+        usage,
+      })
+      .mockResolvedValue({
+        ready: true,
+        generation: 2,
+        resetting: false,
+        nextResetAt: 20_000,
+        now: 3,
+        usage,
+      });
+    let trees = 0;
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      (operation) => {
+        if (operation.kind !== "tree")
+          throw new Error(`unexpected ${operation.kind}`);
+        trees += 1;
+        return Promise.resolve({
+          data: { items: trees === 1 ? [fileEntry, marker] : [fileEntry] },
+          activity,
+        });
+      },
+    );
+    const { result, unmount } = renderHook(() => useShowcase(api));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => result.current.setEditorText("unsaved reset draft"));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(result.current.state.status?.resetting).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(result.current.state.status).toMatchObject({
+      generation: 2,
+      resetting: false,
+    });
+    expect(result.current.state.tree.map((entry) => entry.path)).not.toContain(
+      "/marker.txt",
+    );
+    expect(result.current.state.editor).toMatchObject({
+      text: "unsaved reset draft",
+      dirty: true,
+    });
+    expect(trees).toBe(2);
+    expect(result.current.state.activities).toEqual([activity]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(trees).toBe(2);
+    expect(result.current.state.activities).toEqual([activity]);
+    unmount();
   });
 
   it("preserves user typing when a current same-path read settles after editing", async () => {
