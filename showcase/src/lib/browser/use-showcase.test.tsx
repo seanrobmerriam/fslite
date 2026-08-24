@@ -744,6 +744,72 @@ describe("useShowcase", () => {
     unmount();
   });
 
+  it("observes completion after a reset remains active for more than thirty seconds", async () => {
+    vi.useFakeTimers();
+    const api = apiMock();
+    let statusCalls = 0;
+    (api.status as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      statusCalls += 1;
+      if (statusCalls === 1) {
+        return {
+          ready: true,
+          generation: 1,
+          resetting: false,
+          nextResetAt: 2_000,
+          now: 1,
+          usage,
+        };
+      }
+      if (statusCalls <= 142) {
+        return {
+          ready: true,
+          generation: 1,
+          resetting: true,
+          nextResetAt: null,
+          now: statusCalls,
+          usage,
+        };
+      }
+      return {
+        ready: true,
+        generation: 2,
+        resetting: false,
+        nextResetAt: 900_000,
+        now: statusCalls,
+        usage,
+      };
+    });
+    (api.operation as ReturnType<typeof vi.fn>).mockImplementation(
+      async (operation) =>
+        operation.kind === "tree"
+          ? { data: tree, activity }
+          : { data: {}, activity: { ...activity, id: "after-reset" } },
+    );
+
+    const { result, unmount } = renderHook(() => useShowcase(api));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(40_000);
+    });
+
+    expect(statusCalls).toBeGreaterThan(142);
+    expect(result.current.state.status).toMatchObject({
+      generation: 2,
+      resetting: false,
+    });
+    await act(async () => {
+      await expect(
+        result.current.runOperation({
+          kind: "mkdir",
+          path: "/after-reset" as VirtualPath,
+          parents: false,
+        }),
+      ).resolves.toBeDefined();
+    });
+    unmount();
+  });
+
   it("preserves user typing when a current same-path read settles after editing", async () => {
     const api = apiMock();
     const delayed = deferred<{ data: unknown; activity: typeof activity }>();

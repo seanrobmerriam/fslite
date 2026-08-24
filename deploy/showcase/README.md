@@ -13,7 +13,8 @@ Run these commands from the repository root. Docker Compose v2 is required.
 openssl rand -hex 32 > deploy/showcase/fslite-token
 chmod 0600 deploy/showcase/fslite-token
 docker compose -f deploy/showcase/compose.yml up -d --build
-curl --fail http://127.0.0.1/api/health/ready
+curl --fail --insecure --resolve localhost:443:127.0.0.1 \
+  https://localhost/api/health/ready
 ```
 
 `openssl rand -hex 32` produces a 64-hex-character token. The checked-in
@@ -21,8 +22,8 @@ curl --fail http://127.0.0.1/api/health/ready
 The real `deploy/showcase/fslite-token` file is ignored by Git.
 
 The default hostname is `localhost`; Caddy serves it with its locally managed
-certificate. The separate `http://127.0.0.1` route exists only for loopback
-health checks such as the `curl` command above. Set `SHOWCASE_HOSTNAME` to a
+certificate. The `--insecure` flag above is only for this local Caddy
+certificate. There is no plain-HTTP proxy route. Set `SHOWCASE_HOSTNAME` to a
 public DNS name before starting the stack:
 
 ```sh
@@ -36,6 +37,10 @@ automatically and redirects public HTTP traffic to HTTPS. If an existing Caddy
 deployment already owns certificates, copy the `showcase` snippet and hostname
 site block into that deployment instead of running a second public Caddy. Do
 not publish Astro or `fslite-server` directly.
+
+Keep the snippet's `X-Forwarded-For {remote_host}` override. Astro trusts this
+one Caddy hop when applying per-visitor rate limits, so forwarding an incoming
+visitor-supplied `X-Forwarded-For` chain would make those limits spoofable.
 
 `/api/health/live` proves that the Astro process is running without calling
 the backend. `/api/health/ready` additionally verifies Astro's authenticated
@@ -64,6 +69,12 @@ and 443, and configure `SHOWCASE_HOSTNAME` with the public DNS name. In
 particular, do not add a host `ports:` mapping or a Caddy route for port 8080;
 browsers must never see the fslite bearer credential or call the private server
 directly.
+
+For a public hostname, verify readiness without `--insecure` or `--resolve`:
+
+```sh
+curl --fail https://showcase.example.test/api/health/ready
+```
 
 ## Operations
 

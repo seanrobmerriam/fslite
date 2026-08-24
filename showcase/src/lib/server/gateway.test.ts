@@ -213,9 +213,8 @@ describe("ShowcaseGateway", () => {
       { active_nodes: 2 },
     ]);
 
-    await gateway.execute({ kind: "tree", path: "/" }, "203.0.113.1");
-    for (let count = 3; count < 120; count += 1) {
-      await gateway.statusUsage("203.0.113.1");
+    for (let count = 1; count < 120; count += 1) {
+      await gateway.execute({ kind: "tree", path: "/" }, "203.0.113.1");
     }
     await expect(gateway.download("/a", "203.0.113.1")).rejects.toMatchObject({
       bucket: "read",
@@ -225,6 +224,24 @@ describe("ShowcaseGateway", () => {
     now += 61_000;
     await gateway.statusUsage("203.0.113.1");
     expect(api.usage).toHaveBeenCalledTimes(2);
+  });
+
+  it("serves a minute of 250ms reset polls without exhausting the read bucket", async () => {
+    let now = 1_000;
+    const api = client();
+    const gateway = new ShowcaseGateway(
+      api,
+      new RollingWindowRateLimiter({ now: () => now }),
+      { now: () => now, statusCacheMs: 1_000 },
+    );
+
+    for (let poll = 0; poll < 240; poll += 1) {
+      await expect(gateway.statusUsage("203.0.113.1")).resolves.toBeDefined();
+      now += 250;
+    }
+
+    expect(api.usage).toHaveBeenCalledTimes(60);
+    await expect(gateway.statusUsage("203.0.113.1")).resolves.toBeDefined();
   });
 
   it("never exposes reset or workspace lifecycle dispatch", async () => {

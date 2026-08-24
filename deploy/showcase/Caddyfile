@@ -9,16 +9,14 @@
         Permissions-Policy "geolocation=(), microphone=(), camera=()"
     }
 
-    reverse_proxy astro:4321
+    reverse_proxy astro:4321 {
+        # Astro trusts this single proxy hop for per-IP limits. Replace any
+        # visitor-supplied chain instead of forwarding a spoofable value.
+        header_up X-Forwarded-For {remote_host}
+    }
 }
 
 {$SHOWCASE_HOSTNAME:localhost} {
     import showcase
     header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-}
-
-# A loopback-only HTTP route keeps local health checks independent of
-# certificate trust. Public hostnames above use Caddy automatic HTTPS.
-http://127.0.0.1 {
-    import showcase
 }

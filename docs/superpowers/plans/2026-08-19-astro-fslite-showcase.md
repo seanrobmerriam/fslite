@@ -860,7 +860,8 @@ Run:
 docker compose -f deploy/showcase/compose.yml config
 docker compose -f deploy/showcase/compose.yml build
 docker compose -f deploy/showcase/compose.yml up -d
-curl --fail http://127.0.0.1/api/health/ready
+curl --fail --insecure --resolve localhost:443:127.0.0.1 \
+  https://localhost/api/health/ready
 docker compose -f deploy/showcase/compose.yml down
 ```
 

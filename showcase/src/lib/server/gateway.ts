@@ -142,7 +142,6 @@ export class ShowcaseGateway {
    * polls from becoming matching upstream usage queries.
    */
   async statusUsage(clientIp: string): Promise<unknown> {
-    this.enforce(clientIp, ["read"]);
     const now = this.now();
     if (this.usageCache && this.usageCache.expiresAt > now) {
       return this.usageCache.data;
@@ -150,6 +149,11 @@ export class ShowcaseGateway {
     if (this.usagePending) {
       return this.usagePending;
     }
+
+    // Only a cache miss can amplify into an upstream request, so only misses
+    // consume the shared read budget. This keeps a long reset's faster status
+    // polling from locking the browser in a stale `resetting` state.
+    this.enforce(clientIp, ["read"]);
 
     const pending = this.client.usage().then((result) => {
       this.usageCache = {
