@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "fslite"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "atomic-write-file",
  "axum",
@@ -455,12 +455,15 @@ dependencies = [
 
 [[package]]
 name = "fslite-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
+ "atomic-write-file",
  "axum",
  "base64",
  "bytes",
+ "clap",
+ "directories",
  "fslite-command",
  "fslite-core",
  "fslite-sqlite",
@@ -468,6 +471,7 @@ dependencies = [
  "http-body-util",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tower",
  "tower-http",
@@ -478,7 +482,7 @@ dependencies = [
 
 [[package]]
 name = "fslite-sqlite"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "base64",

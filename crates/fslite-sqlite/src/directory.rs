@@ -158,10 +158,10 @@ pub(crate) fn mkdir_tx(
             return Ok(MkdirOutcome::AlreadyExists);
         }
 
-        if let Some(expected) = options.expected_revision
-            && existing.revision != expected.get() as i64
-        {
-            return Ok(MkdirOutcome::RevisionConflict);
+        if let Some(expected) = options.expected_revision {
+            if existing.revision != expected.get() as i64 {
+                return Ok(MkdirOutcome::RevisionConflict);
+            }
         }
 
         return Ok(MkdirOutcome::Existing(existing));
@@ -325,10 +325,10 @@ pub(crate) async fn read_dir(
             if parent.kind != DIRECTORY_KIND {
                 return Ok(ReadDirRaw::NotDirectory);
             }
-            if let Some(cursor) = &after
-                && cursor.parent_id != parent.id
-            {
-                return Ok(ReadDirRaw::CursorMismatch);
+            if let Some(cursor) = &after {
+                if cursor.parent_id != parent.id {
+                    return Ok(ReadDirRaw::CursorMismatch);
+                }
             }
 
             let rows = fetch_children_page(
@@ -537,10 +537,10 @@ pub(crate) async fn tree(
             if root.kind != DIRECTORY_KIND {
                 return Ok(TreeRaw::NotDirectory);
             }
-            if let Some(cursor) = &after
-                && cursor.root_id != root.id
-            {
-                return Ok(TreeRaw::CursorMismatch);
+            if let Some(cursor) = &after {
+                if cursor.root_id != root.id {
+                    return Ok(TreeRaw::CursorMismatch);
+                }
             }
 
             let rows = fetch_tree_page(

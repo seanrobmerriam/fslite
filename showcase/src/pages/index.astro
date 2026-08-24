@@ -1,0 +1,21 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { ShowcaseExplorer } from "../components/explorer/ShowcaseExplorer";
+---
+
+<Layout>
+  <main>
+    <section class="hero" aria-labelledby="showcase-title">
+      <p class="eyebrow">fslite</p>
+      <h1 id="showcase-title">Filesystem server showcase</h1>
+      <p>
+        Explore the fslite API through a focused, browser-based filesystem
+        workspace with SQLite-backed persistence.
+      </p>
+    </section>
+
+    <section aria-label="Filesystem showcase">
+      <ShowcaseExplorer client:load />
+    </section>
+  </main>
+</Layout>

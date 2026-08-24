@@ -10,6 +10,13 @@ shell-script embedders. Flag names and behavior are stable; new verbs
 and flags may be added without bumping. Breaking changes will bump the
 minor version per `SEMVER.md`.
 
+## 0.2.0
+
+The `fslite` package is released at `0.2.0` because its manifest now accepts
+the additive `fslite-sqlite 0.2.0` release required by the persistent server
+train. CLI behavior is otherwise unchanged; use it with `fslite-server`'s
+first-run connection guidance or a protected `FSLITE_TOKEN` value.
+
 ## 0.1.1
 
 Filesystem commands now accept workspace-root-relative paths, so installed

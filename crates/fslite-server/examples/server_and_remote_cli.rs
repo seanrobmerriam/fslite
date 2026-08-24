@@ -2,7 +2,7 @@
 //! `fslite-command`'s `RemoteExecutor` — the same executor `fslite-cli`
 //! uses in `--server` mode — over a real TCP connection.
 //!
-//! Run with `cargo run --example server_and_remote_cli`.
+//! Run with `cargo run -p fslite-server --example server_and_remote_cli`.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;

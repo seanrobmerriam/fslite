@@ -22,6 +22,7 @@ pub use tracing_mw::RequestId;
 pub fn app(state: AppState) -> Router {
     Router::new()
         .merge(routes::health_router())
+        .merge(routes::identity::router())
         .merge(routes::nodes::router())
         .merge(routes::directories::router())
         .merge(routes::trash::router())

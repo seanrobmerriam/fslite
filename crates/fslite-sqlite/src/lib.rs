@@ -79,6 +79,11 @@ impl SqliteFileSystem {
         workspace::delete_workspace(&self.conn, workspace_id).await
     }
 
+    /// Atomically returns a workspace to its empty initial state.
+    pub async fn reset_workspace(&self, workspace_id: WorkspaceId) -> FsResult<()> {
+        workspace::reset_workspace(&self.conn, workspace_id).await
+    }
+
     /// Returns logical and quota usage for the context's workspace.
     pub async fn workspace_usage(&self, ctx: &RequestContext) -> FsResult<WorkspaceUsage> {
         require_capability(ctx, Capability::Read, ctx.workspace_id)?;

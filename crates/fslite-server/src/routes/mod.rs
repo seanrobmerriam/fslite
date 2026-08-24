@@ -11,6 +11,7 @@ use crate::state::AppState;
 pub mod batch;
 pub mod content;
 pub mod directories;
+pub mod identity;
 pub mod nodes;
 pub mod search;
 pub mod trash;

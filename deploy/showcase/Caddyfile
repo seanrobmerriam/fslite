@@ -1,0 +1,22 @@
+(showcase) {
+    encode zstd gzip
+
+    header {
+        -Server
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+    }
+
+    reverse_proxy astro:4321 {
+        # Astro trusts this single proxy hop for per-IP limits. Replace any
+        # visitor-supplied chain instead of forwarding a spoofable value.
+        header_up X-Forwarded-For {remote_host}
+    }
+}
+
+{$SHOWCASE_HOSTNAME:localhost} {
+    import showcase
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}

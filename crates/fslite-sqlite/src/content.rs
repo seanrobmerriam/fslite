@@ -427,10 +427,10 @@ fn finalize_tx(
     if existing.kind != FILE_KIND {
         return Ok(FinalizeOutcome::WrongNodeType);
     }
-    if let Some(expected) = params.expected_revision
-        && existing.revision != expected.get() as i64
-    {
-        return Ok(FinalizeOutcome::RevisionConflict);
+    if let Some(expected) = params.expected_revision {
+        if existing.revision != expected.get() as i64 {
+            return Ok(FinalizeOutcome::RevisionConflict);
+        }
     }
 
     let now = now_ms();
@@ -459,10 +459,10 @@ fn finalize_tx(
         now,
     )?;
 
-    if let Some(old_generation_id) = &existing.content_generation_id
-        && old_generation_id != new_generation_id
-    {
-        delete_generation(tx, old_generation_id)?;
+    if let Some(old_generation_id) = &existing.content_generation_id {
+        if old_generation_id != new_generation_id {
+            delete_generation(tx, old_generation_id)?;
+        }
     }
 
     Ok(FinalizeOutcome::Applied(RawNode {
@@ -633,18 +633,18 @@ async fn write_at_impl(
     let mut writer = ChunkWriter::new(conn.clone(), generation_id, max_file_bytes);
 
     let prefix_end = offset.min(old_length);
-    if let Some(old_generation_id) = &old_generation_id
-        && let Err(err) = writer.copy_prefix_from(old_generation_id, prefix_end).await
-    {
-        writer.abort().await;
-        return Err(err);
+    if let Some(old_generation_id) = &old_generation_id {
+        if let Err(err) = writer.copy_prefix_from(old_generation_id, prefix_end).await {
+            writer.abort().await;
+            return Err(err);
+        }
     }
 
-    if offset > old_length
-        && let Err(err) = writer.zero_fill(offset - old_length).await
-    {
-        writer.abort().await;
-        return Err(err);
+    if offset > old_length {
+        if let Err(err) = writer.zero_fill(offset - old_length).await {
+            writer.abort().await;
+            return Err(err);
+        }
     }
 
     if let Some(mut source) = source {
@@ -797,10 +797,10 @@ pub(crate) fn touch_tx(
             if node.kind != FILE_KIND {
                 return Ok(TouchOutcome::WrongNodeType);
             }
-            if let Some(expected) = options.expected_revision
-                && node.revision != expected.get() as i64
-            {
-                return Ok(TouchOutcome::RevisionConflict);
+            if let Some(expected) = options.expected_revision {
+                if node.revision != expected.get() as i64 {
+                    return Ok(TouchOutcome::RevisionConflict);
+                }
             }
 
             let now = now_ms();

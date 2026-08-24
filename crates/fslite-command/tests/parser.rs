@@ -153,6 +153,13 @@ fn mkdir_parents_and_exist_ok_flags() {
 #[test]
 fn relative_virtual_paths_resolve_from_the_workspace_root() {
     assert_eq!(
+        parse("ls .").unwrap(),
+        Command::ReadDir {
+            path: path("/"),
+            page: PageRequest::default(),
+        }
+    );
+    assert_eq!(
         parse("mkdir docs --parents").unwrap(),
         Command::Mkdir {
             path: path("/docs"),

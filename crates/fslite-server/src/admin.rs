@@ -14,6 +14,8 @@ pub trait WorkspaceAdmin: Send + Sync {
     async fn create_workspace(&self) -> FsResult<Workspace>;
     /// Permanently deletes a workspace and everything it contains.
     async fn delete_workspace(&self, id: WorkspaceId) -> FsResult<()>;
+    /// Atomically returns a workspace to its empty initial state.
+    async fn reset_workspace(&self, id: WorkspaceId) -> FsResult<()>;
 }
 
 /// Adapts [`SqliteFileSystem`]'s inherent workspace methods to [`WorkspaceAdmin`].
@@ -27,5 +29,9 @@ impl WorkspaceAdmin for SqliteWorkspaceAdmin {
 
     async fn delete_workspace(&self, id: WorkspaceId) -> FsResult<()> {
         self.0.delete_workspace(id).await
+    }
+
+    async fn reset_workspace(&self, id: WorkspaceId) -> FsResult<()> {
+        self.0.reset_workspace(id).await
     }
 }

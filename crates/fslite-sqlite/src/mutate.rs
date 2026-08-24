@@ -181,10 +181,10 @@ pub(crate) fn copy_tx(
         ResolveOutcome::LinkLoop => return Ok(CopyOutcome::SourceLinkLoop),
     };
 
-    if let Some(expected) = options.expected_revision
-        && source.revision != expected.get() as i64
-    {
-        return Ok(CopyOutcome::RevisionConflict);
+    if let Some(expected) = options.expected_revision {
+        if source.revision != expected.get() as i64 {
+            return Ok(CopyOutcome::RevisionConflict);
+        }
     }
 
     if source.kind == DIRECTORY_KIND && !options.recursive {
@@ -420,10 +420,10 @@ pub(crate) fn move_tx(
         ResolveOutcome::LinkLoop => return Ok(MoveOutcome::SourceLinkLoop),
     };
 
-    if let Some(expected) = options.expected_revision
-        && source.revision != expected.get() as i64
-    {
-        return Ok(MoveOutcome::RevisionConflict);
+    if let Some(expected) = options.expected_revision {
+        if source.revision != expected.get() as i64 {
+            return Ok(MoveOutcome::RevisionConflict);
+        }
     }
 
     if is_same_or_descendant(from, to) {
@@ -545,10 +545,10 @@ pub(crate) fn remove_tx(
         ResolveOutcome::LinkLoop => return Ok(RemoveOutcome::LinkLoop),
     };
 
-    if let Some(expected) = options.expected_revision
-        && node.revision != expected.get() as i64
-    {
-        return Ok(RemoveOutcome::RevisionConflict);
+    if let Some(expected) = options.expected_revision {
+        if node.revision != expected.get() as i64 {
+            return Ok(RemoveOutcome::RevisionConflict);
+        }
     }
 
     if node.kind == DIRECTORY_KIND
@@ -657,10 +657,10 @@ pub(crate) fn symlink_tx(
         if !options.exist_ok {
             return Ok(SymlinkOutcome::AlreadyExists);
         }
-        if let Some(expected) = options.expected_revision
-            && existing.revision != expected.get() as i64
-        {
-            return Ok(SymlinkOutcome::RevisionConflict);
+        if let Some(expected) = options.expected_revision {
+            if existing.revision != expected.get() as i64 {
+                return Ok(SymlinkOutcome::RevisionConflict);
+            }
         }
         return Ok(SymlinkOutcome::Existing(existing));
     }
@@ -823,10 +823,10 @@ pub(crate) fn set_attribute_tx(
     if value.len() > MAX_ATTRIBUTE_VALUE_BYTES {
         return Ok(AttributeOutcome::QuotaExceeded);
     }
-    if let Some(expected) = options.expected_revision
-        && node.revision != expected.get() as i64
-    {
-        return Ok(AttributeOutcome::RevisionConflict);
+    if let Some(expected) = options.expected_revision {
+        if node.revision != expected.get() as i64 {
+            return Ok(AttributeOutcome::RevisionConflict);
+        }
     }
 
     let already_exists: bool = tx.query_row(
@@ -924,10 +924,10 @@ pub(crate) fn remove_attribute_tx(
         ResolveOutcome::LinkLoop => return Ok(AttributeOutcome::LinkLoop),
     };
 
-    if let Some(expected) = options.expected_revision
-        && node.revision != expected.get() as i64
-    {
-        return Ok(AttributeOutcome::RevisionConflict);
+    if let Some(expected) = options.expected_revision {
+        if node.revision != expected.get() as i64 {
+            return Ok(AttributeOutcome::RevisionConflict);
+        }
     }
 
     let deleted = tx.execute(
