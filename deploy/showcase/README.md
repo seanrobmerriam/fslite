@@ -47,6 +47,10 @@ the backend. `/api/health/ready` additionally verifies Astro's authenticated
 private connection to `fslite-server` and can take a short time after startup
 because the showcase resets and seeds its workspace once.
 
+The reference service creates its shared workspace with hard limits of 10 MiB
+total content, 250 nodes, and 1 MiB per file. These server-side quotas are in
+addition to Astro's request-size and per-visitor rate limits.
+
 To stop the containers while preserving the `fslite_data` volume:
 
 ```sh

@@ -141,8 +141,8 @@ describe("ResetCoordinator", () => {
   });
 
   it("does not publish or schedule after a seed failure, then retries reset and start", async () => {
-    const interval = { unref: vi.fn() };
-    const setInterval = vi.fn(() => interval);
+    const timer = { unref: vi.fn() };
+    const setTimeout = vi.fn(() => timer);
     const client = { resetWorkspace: vi.fn(async () => undefined) };
     const seed = vi
       .fn<() => Promise<void>>()
@@ -150,7 +150,7 @@ describe("ResetCoordinator", () => {
       .mockResolvedValue(undefined);
     const coordinator = new ResetCoordinator(client, seed, {
       now: () => 50,
-      setInterval,
+      setTimeout,
     });
 
     await expect(coordinator.start()).rejects.toThrow("seed write failed");
@@ -160,10 +160,10 @@ describe("ResetCoordinator", () => {
       generation: 0,
       nextResetAt: null,
     });
-    expect(setInterval).not.toHaveBeenCalled();
+    expect(setTimeout).not.toHaveBeenCalled();
 
     await coordinator.resetNow();
-    expect(setInterval).not.toHaveBeenCalled();
+    expect(setTimeout).not.toHaveBeenCalled();
     expect(coordinator.snapshot()).toMatchObject({
       resetting: false,
       generation: 1,
@@ -173,7 +173,7 @@ describe("ResetCoordinator", () => {
     await coordinator.start();
     expect(client.resetWorkspace).toHaveBeenCalledTimes(3);
     expect(seed).toHaveBeenCalledTimes(3);
-    expect(setInterval).toHaveBeenCalledTimes(1);
+    expect(setTimeout).toHaveBeenCalledTimes(1);
     expect(coordinator.snapshot()).toMatchObject({
       resetting: false,
       generation: 2,
@@ -181,33 +181,33 @@ describe("ResetCoordinator", () => {
     });
   });
 
-  it("starts one unref'd interval and disposes it without using real timers", async () => {
-    const interval = { unref: vi.fn() };
-    const setInterval = vi.fn(() => interval);
-    const clearInterval = vi.fn();
+  it("starts one unref'd timer and disposes it without using real timers", async () => {
+    const timer = { unref: vi.fn() };
+    const setTimeout = vi.fn(() => timer);
+    const clearTimeout = vi.fn();
     const client = { resetWorkspace: vi.fn(async () => undefined) };
     const coordinator = new ResetCoordinator(client, async () => undefined, {
-      setInterval,
-      clearInterval,
+      setTimeout,
+      clearTimeout,
     });
 
     await coordinator.start();
     await coordinator.start();
 
-    expect(setInterval).toHaveBeenCalledTimes(1);
-    expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 900_000);
-    expect(interval.unref).toHaveBeenCalledTimes(1);
+    expect(setTimeout).toHaveBeenCalledTimes(1);
+    expect(setTimeout).toHaveBeenCalledWith(expect.any(Function), 900_000);
+    expect(timer.unref).toHaveBeenCalledTimes(1);
     expect(client.resetWorkspace).toHaveBeenCalledTimes(1);
     coordinator.dispose();
-    expect(clearInterval).toHaveBeenCalledWith(interval);
+    expect(clearTimeout).toHaveBeenCalledWith(timer);
   });
 
   it("does not install a timer when disposal races a pending start", async () => {
     const releaseReset = deferred<void>();
-    const setInterval = vi.fn(() => ({ unref: vi.fn() }));
+    const setTimeout = vi.fn(() => ({ unref: vi.fn() }));
     const client = { resetWorkspace: vi.fn(() => releaseReset.promise) };
     const coordinator = new ResetCoordinator(client, async () => undefined, {
-      setInterval,
+      setTimeout,
     });
 
     const starting = coordinator.start();
@@ -217,7 +217,66 @@ describe("ResetCoordinator", () => {
     await starting;
     await coordinator.start();
 
-    expect(setInterval).not.toHaveBeenCalled();
+    expect(setTimeout).not.toHaveBeenCalled();
     expect(client.resetWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("gates the workspace and retries shortly when a scheduled seed fails", async () => {
+    let now = 100;
+    const timers: Array<{
+      callback: () => void;
+      delayMs: number;
+      handle: { unref: ReturnType<typeof vi.fn> };
+    }> = [];
+    const setTimeout = vi.fn((callback: () => void, delayMs: number) => {
+      const handle = { unref: vi.fn() };
+      timers.push({ callback, delayMs, handle });
+      return handle;
+    });
+    const clearTimeout = vi.fn();
+    const client = { resetWorkspace: vi.fn(async () => undefined) };
+    const seed = vi
+      .fn<() => Promise<void>>()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("transient seed failure"))
+      .mockResolvedValueOnce(undefined);
+    const coordinator = new ResetCoordinator(client, seed, {
+      now: () => now,
+      setTimeout,
+      clearTimeout,
+    });
+
+    await coordinator.start();
+    expect(timers[0]?.delayMs).toBe(900_000);
+
+    now = 900_100;
+    timers[0]?.callback();
+    await vi.waitFor(() => expect(seed).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(coordinator.snapshot()).toEqual({
+        activeOperations: 0,
+        resetting: true,
+        generation: 1,
+        nextResetAt: null,
+      }),
+    );
+    await expect(
+      coordinator.withOperation(async () => undefined),
+    ).rejects.toBeInstanceOf(WorkspaceResettingError);
+    expect(timers[1]?.delayMs).toBe(1_000);
+
+    now = 901_100;
+    timers[1]?.callback();
+    await vi.waitFor(() =>
+      expect(coordinator.snapshot()).toEqual({
+        activeOperations: 0,
+        resetting: false,
+        generation: 2,
+        nextResetAt: 1_801_100,
+      }),
+    );
+    expect(client.resetWorkspace).toHaveBeenCalledTimes(3);
+    expect(seed).toHaveBeenCalledTimes(3);
+    expect(timers[2]?.delayMs).toBe(900_000);
   });
 });

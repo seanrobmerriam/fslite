@@ -12,7 +12,7 @@ export interface ResetSnapshot {
   nextResetAt: number | null;
 }
 
-interface IntervalHandle {
+interface TimerHandle {
   unref?: () => unknown;
 }
 
@@ -20,8 +20,8 @@ export interface ResetCoordinatorDependencies {
   now?: () => number;
   resetIntervalMs?: number;
   retryAfterMs?: number;
-  setInterval?: (callback: () => void, intervalMs: number) => IntervalHandle;
-  clearInterval?: (handle: IntervalHandle) => void;
+  setTimeout?: (callback: () => void, delayMs: number) => TimerHandle;
+  clearTimeout?: (handle: TimerHandle) => void;
 }
 
 export class WorkspaceResettingError extends Error {
@@ -43,16 +43,17 @@ export class ResetCoordinator {
   private nextResetAt: number | null = null;
   private readonly zeroWaiters: Array<() => void> = [];
   private resetPromise: Promise<void> | undefined;
-  private interval: IntervalHandle | undefined;
+  private timer: TimerHandle | undefined;
+  private started = false;
   private disposed = false;
   private readonly now: () => number;
   private readonly resetIntervalMs: number;
   private readonly retryAfterMs: number;
   private readonly schedule: (
     callback: () => void,
-    intervalMs: number,
-  ) => IntervalHandle;
-  private readonly cancelSchedule: (handle: IntervalHandle) => void;
+    delayMs: number,
+  ) => TimerHandle;
+  private readonly cancelSchedule: (handle: TimerHandle) => void;
 
   constructor(
     private readonly client: ResetClient,
@@ -64,16 +65,13 @@ export class ResetCoordinator {
       dependencies.resetIntervalMs ?? DEFAULT_RESET_INTERVAL_MS;
     this.retryAfterMs = dependencies.retryAfterMs ?? DEFAULT_RETRY_AFTER_MS;
     this.schedule =
-      dependencies.setInterval ??
-      ((callback, intervalMs) =>
-        globalThis.setInterval(
-          callback,
-          intervalMs,
-        ) as unknown as IntervalHandle);
+      dependencies.setTimeout ??
+      ((callback, delayMs) =>
+        globalThis.setTimeout(callback, delayMs) as unknown as TimerHandle);
     this.cancelSchedule =
-      dependencies.clearInterval ??
+      dependencies.clearTimeout ??
       ((handle) =>
-        globalThis.clearInterval(handle as ReturnType<typeof setInterval>));
+        globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>));
   }
 
   snapshot(): ResetSnapshot {
@@ -118,27 +116,55 @@ export class ResetCoordinator {
   }
 
   async start(): Promise<void> {
-    if (this.disposed || this.interval) {
+    if (this.disposed || this.started) {
       return;
     }
     await this.resetNow();
-    if (this.disposed || this.interval) {
+    if (this.disposed || this.started) {
       return;
     }
 
-    this.interval = this.schedule(() => {
-      void this.resetNow().catch(() => undefined);
-    }, this.resetIntervalMs);
-    this.interval.unref?.();
+    this.started = true;
+    this.installTimer(this.resetIntervalMs);
   }
 
   dispose(): void {
     this.disposed = true;
-    if (!this.interval) {
+    this.nextResetAt = null;
+    if (!this.timer) {
       return;
     }
-    this.cancelSchedule(this.interval);
-    this.interval = undefined;
+    this.cancelSchedule(this.timer);
+    this.timer = undefined;
+  }
+
+  private installTimer(delayMs: number): void {
+    this.timer = this.schedule(() => {
+      this.timer = undefined;
+      void this.runScheduledReset();
+    }, delayMs);
+    this.timer.unref?.();
+  }
+
+  private async runScheduledReset(): Promise<void> {
+    this.nextResetAt = null;
+    try {
+      await this.resetNow();
+    } catch {
+      if (this.disposed) {
+        return;
+      }
+
+      // A reset may have emptied the workspace before a seed write failed.
+      // Keep all public work gated until a complete reset-and-seed succeeds.
+      this.resetting = true;
+      this.installTimer(this.retryAfterMs);
+      return;
+    }
+
+    if (!this.disposed) {
+      this.installTimer(this.resetIntervalMs);
+    }
   }
 
   private async performReset(): Promise<void> {

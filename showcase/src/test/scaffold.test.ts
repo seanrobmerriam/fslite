@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import astroConfig from "../../astro.config.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const repositoryRoot = resolve(root, "..");
 
 async function readShowcaseFile(path: string): Promise<string> {
   return readFile(resolve(root, path), "utf8");
@@ -49,5 +50,21 @@ describe("Astro SSR foundation", () => {
     expect(layout).toContain("global.css");
     expect(page).toContain("<main>");
     expect(page).toContain('<section aria-label="Filesystem showcase">');
+  });
+
+  it("pins the public workspace quotas in the reference deployment", async () => {
+    const compose = await readFile(
+      resolve(repositoryRoot, "deploy/showcase/compose.yml"),
+      "utf8",
+    );
+    const serverService = compose
+      .split("\n  fslite-server:\n", 2)
+      .at(1)
+      ?.split("\nsecrets:\n", 1)
+      .at(0);
+
+    expect(serverService).toContain('FSLITE_MAX_BYTES: "10485760"');
+    expect(serverService).toContain('FSLITE_MAX_NODES: "250"');
+    expect(serverService).toContain('FSLITE_MAX_FILE_BYTES: "1048576"');
   });
 });
