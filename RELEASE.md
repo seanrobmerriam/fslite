@@ -31,6 +31,10 @@ cargo publish --dry-run -p fslite-sqlite
 git diff --check
 ```
 
+The SQLite dry run must package all five examples and both `LICENSE-APACHE`
+and `LICENSE-MIT` without ignored-file warnings. Treat any package-content
+warning as a release blocker.
+
 After `fslite-sqlite 0.2.0` is indexed—but before publishing the dependent
 crates—run:
 
@@ -41,9 +45,9 @@ cargo package -p fslite --allow-dirty --no-verify
 
 Inspect the generated package file lists before continuing. They must include
 the server's package-local `examples/server_and_remote_cli.rs` and relevant
-release notes, and must not contain SQLite databases, credentials, `.env`
-files, or build output. Do not represent a server publish dry run as complete
-until `fslite-sqlite 0.2.0` is indexed on crates.io.
+release notes and both license texts, and must not contain SQLite databases,
+credentials, `.env` files, or build output. Do not represent a server publish
+dry run as complete until `fslite-sqlite 0.2.0` is indexed on crates.io.
 
 ## Publish order and commands
 

@@ -70,7 +70,7 @@ while let Some(chunk) = stream.next().await {
 # Ok(()) }
 ```
 
-See [`examples/embedded.rs`](examples/embedded.rs) for a complete, runnable
+See [`crates/fslite-sqlite/examples/embedded.rs`](crates/fslite-sqlite/examples/embedded.rs) for a complete, runnable
 version (`cargo run --example embedded`), and the full list below for more.
 
 ## Examples
@@ -80,11 +80,11 @@ setup) and runnable with `cargo run --example <name>`:
 
 | Example | Demonstrates |
 | --- | --- |
-| [`embedded`](examples/embedded.rs) | Open a database, write a file from a byte stream, read it back, list a directory, print workspace usage. |
-| [`batch`](examples/batch.rs) | Atomic multi-operation batches via `batch` — an aborted batch commits nothing, a valid one commits every operation together. |
-| [`trash_lifecycle`](examples/trash_lifecycle.rs) | `trash` hides a subtree without touching its data, `restore` brings it back (optionally under a new name), and `purge` is the only way its content is actually reclaimed. |
-| [`workspace_isolation`](examples/workspace_isolation.rs) | Two workspaces in one database hold the same path independently, with no cross-workspace visibility — including a rejected cross-workspace pagination cursor. |
-| [`search_and_glob`](examples/search_and_glob.rs) | `glob` (path-shape matching), `find` (bounded metadata predicates), and `search_content` (literal byte matches inside files). |
+| [`embedded`](crates/fslite-sqlite/examples/embedded.rs) | Open a database, write a file from a byte stream, read it back, list a directory, print workspace usage. |
+| [`batch`](crates/fslite-sqlite/examples/batch.rs) | Atomic multi-operation batches via `batch` — an aborted batch commits nothing, a valid one commits every operation together. |
+| [`trash_lifecycle`](crates/fslite-sqlite/examples/trash_lifecycle.rs) | `trash` hides a subtree without touching its data, `restore` brings it back (optionally under a new name), and `purge` is the only way its content is actually reclaimed. |
+| [`workspace_isolation`](crates/fslite-sqlite/examples/workspace_isolation.rs) | Two workspaces in one database hold the same path independently, with no cross-workspace visibility — including a rejected cross-workspace pagination cursor. |
+| [`search_and_glob`](crates/fslite-sqlite/examples/search_and_glob.rs) | `glob` (path-shape matching), `find` (bounded metadata predicates), and `search_content` (literal byte matches inside files). |
 | [`server_and_remote_cli`](crates/fslite-server/examples/server_and_remote_cli.rs) | Runs `fslite-server`'s HTTP API in-process and drives it with `fslite-command`'s `RemoteExecutor` — the same client `fslite --server` uses — over a real TCP connection. Run with `cargo run -p fslite-server --example server_and_remote_cli`. |
 
 ## CLI and server
@@ -121,7 +121,7 @@ fslite delete filesystem-main -y   # permanently deletes fsmain.db
 have no meaning to `fslite-core`/`fslite-sqlite`/`fslite-server`, which
 only ever see raw workspace ids. `--filesystem <name>` and `--workspace
 <name-or-id>` override the persisted context for a single invocation
-without changing it (`fslite --filesystem other-fs mkdir /tmp`); the raw
+without changing it (`fslite --filesystem other-fs mkdir tmp`); the raw
 `--db`/`--memory`/`--server` + `--workspace <uuid>` flags shown below
 remain fully supported and bypass the registry/context entirely — useful
 for scripting against a database you don't want registered under a name.
@@ -132,9 +132,9 @@ for scripting against a database you don't want registered under a name.
 # noise) — capture it with `-q` to suppress that noise and keep the
 # variable clean:
 WORKSPACE=$(cargo run -q -p fslite -- --db ./fslite.db --create-workspace)
-cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" mkdir /docs
-cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" write /docs/hello.txt --text=hi
-cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" ls /
+cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" mkdir docs
+cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" write docs/hello.txt --text=hi
+cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" ls .
 
 # Local, interactive REPL (the workspace must already exist — create it
 # first, as above, or against the same --db file)
@@ -142,8 +142,10 @@ cargo run -p fslite -- --db ./fslite.db --workspace "$WORKSPACE" --repl
 
 # Remote, against a running fslite-server
 cargo run -p fslite -- --server http://localhost:8080 --workspace <id> \
-  --token "$FSLITE_TOKEN" ls /
+  --token "$FSLITE_TOKEN" ls .
 ```
+
+`.` names the active workspace root; other relative paths start there too.
 
 `fslite-server` is a standalone persistent SQLite server. It creates a
 default database, workspace, and bearer credential on its first start, then
@@ -363,3 +365,8 @@ local, remote, and REPL tests for the CLI). They've had several rounds of
 security hardening (bidi-override stripping, output sanitization, token
 handling) but are newer than `fslite-core`/`fslite-sqlite` and should be
 treated as less battle-tested.
+
+## License
+
+fslite is available under either the [Apache License 2.0](LICENSE-APACHE) or
+the [MIT license](LICENSE-MIT), at your option.

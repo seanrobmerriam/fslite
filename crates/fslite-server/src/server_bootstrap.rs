@@ -60,7 +60,7 @@ impl BootstrapResult {
         let server = format!("http://{address}");
         if self.generated_token {
             println!(
-                "FSLITE_TOKEN={} fslite --server {} --workspace {} ls /",
+                "FSLITE_TOKEN={} fslite --server {} --workspace {} ls .",
                 self.token, server, self.workspace_id
             );
         } else {
@@ -69,7 +69,7 @@ impl BootstrapResult {
                 self.config_path.display()
             );
             println!(
-                "FSLITE_TOKEN=$FSLITE_TOKEN fslite --server {} --workspace {} ls /",
+                "FSLITE_TOKEN=$FSLITE_TOKEN fslite --server {} --workspace {} ls .",
                 server, self.workspace_id
             );
         }

@@ -20,17 +20,22 @@ curl --fail http://127.0.0.1/api/health/ready
 `fslite-token.example` is a non-secret placeholder; never use it as a token.
 The real `deploy/showcase/fslite-token` file is ignored by Git.
 
-The default route is `http://localhost`. Set `SHOWCASE_HOSTNAME` before
-starting the stack to route another HTTP hostname through Caddy:
+The default hostname is `localhost`; Caddy serves it with its locally managed
+certificate. The separate `http://127.0.0.1` route exists only for loopback
+health checks such as the `curl` command above. Set `SHOWCASE_HOSTNAME` to a
+public DNS name before starting the stack:
 
 ```sh
 SHOWCASE_HOSTNAME=showcase.example.test \
   docker compose -f deploy/showcase/compose.yml up -d --build
 ```
 
-For a public HTTPS hostname, adapt the site address in `Caddyfile` according
-to the Caddy deployment that owns your certificates; do not publish Astro or
-`fslite-server` directly.
+Ports 80 and 443 must reach Caddy, and the hostname's A/AAAA records must point
+at the deployment. Caddy then obtains and renews the public certificate
+automatically and redirects public HTTP traffic to HTTPS. If an existing Caddy
+deployment already owns certificates, copy the `showcase` snippet and hostname
+site block into that deployment instead of running a second public Caddy. Do
+not publish Astro or `fslite-server` directly.
 
 `/api/health/live` proves that the Astro process is running without calling
 the backend. `/api/health/ready` additionally verifies Astro's authenticated
@@ -54,9 +59,11 @@ repository's `showcase/` Dockerfile. Copy the `astro` service settings from
 the shared `fslite_token` secret. Retain unrelated `next`, `postgres`,
 `rustfs`, and `toolchain` services unchanged.
 
-Keep the Caddy route pointed only at `astro:4321`. In particular, do not add a
-host `ports:` mapping or a Caddy route for port 8080; browsers must never see
-the fslite bearer credential or call the private server directly.
+Keep the Caddy route pointed only at `astro:4321`, publish both Caddy ports 80
+and 443, and configure `SHOWCASE_HOSTNAME` with the public DNS name. In
+particular, do not add a host `ports:` mapping or a Caddy route for port 8080;
+browsers must never see the fslite bearer credential or call the private server
+directly.
 
 ## Operations
 

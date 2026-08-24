@@ -1,4 +1,4 @@
-http://{$SHOWCASE_HOSTNAME:localhost}, http://127.0.0.1 {
+(showcase) {
     encode zstd gzip
 
     header {
@@ -10,4 +10,15 @@ http://{$SHOWCASE_HOSTNAME:localhost}, http://127.0.0.1 {
     }
 
     reverse_proxy astro:4321
+}
+
+{$SHOWCASE_HOSTNAME:localhost} {
+    import showcase
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
+
+# A loopback-only HTTP route keeps local health checks independent of
+# certificate trust. Public hostnames above use Caddy automatic HTTPS.
+http://127.0.0.1 {
+    import showcase
 }
